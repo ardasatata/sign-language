@@ -21,14 +21,14 @@ from tensorflow.python.keras.callbacks import LearningRateScheduler
 from tensorflow.python.keras.layers import Conv1D, Add, Activation, Lambda, Dense, TimeDistributed, Conv2D, \
     MaxPooling2D, GlobalAveragePooling2D, Flatten, LSTM, Dropout, MaxPooling1D, Bidirectional
 
-# from keras_ctcmodel.CTCModel import CTCModel as CTCModel
-
 from extract_layer4 import get_output_layer
 from train_custom import VGG, TCN_layer, VGG_2
 
 from keras.models import load_model
 
 from keras.optimizers import Adam, SGD
+
+from keras_ctcmodel.CTCModel import CTCModel as CTCModel
 
 gpus = tf.config.experimental.list_physical_devices('GPU')
 tf.config.experimental.set_memory_growth(gpus[0], True)
@@ -1409,8 +1409,8 @@ if __name__ == '__main__':
     '''
     Classify LSA 64
     '''
-    train(shuffle=True)
-    model_predict(filename="025_009_003.npz")
+    # train(shuffle=True)
+    # model_predict(filename="025_009_003.npz")
     '''
     '''
 

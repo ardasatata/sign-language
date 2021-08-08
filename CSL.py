@@ -7,6 +7,9 @@ import sys
 from os import listdir, path
 from os.path import isfile, join, isdir
 
+from tensorflow.keras.utils import Progbar
+from keras_ctcmodel.CTCModel import CTCModel as CTCModel
+
 import cv2
 import csv
 
@@ -24,18 +27,25 @@ from tensorflow.python.keras import Input
 from tensorflow.python.keras.callbacks import LearningRateScheduler
 from tensorflow.python.keras.layers import Conv1D, Add, Activation, Lambda, Dense, TimeDistributed, Conv2D, \
     MaxPooling2D, GlobalAveragePooling2D, Flatten, LSTM, Dropout, MaxPooling1D, Bidirectional
+from tensorflow.python.keras.optimizer_v2.adam import Adam
 
 from extract_layer4 import get_output_layer
 
 import numpy as np
 from numpy import savez_compressed
 
-CSL_PATH = r'D:\CSL-25K\pytorch\color'
+import pandas as pd
+import os
 
-OUTPUT_PATH = r'D:\CSL-25K\Output Layer 4'
+CSL_PATH = r'F:\Dataset\Sign Language\CSL\pytorch\color'
 
-SENTENCE_START = 15
-SENTENCE_END = 20
+OUTPUT_PATH = r'F:\Dataset\Sign Language\CSL-Output'
+OUTPUT_PATH = r'F:\Dataset\Sign Language\CSL-Output_test'
+
+MODEL_SAVE_PATH = r"F:\Dataset\Sign Language\CSL Model + Keypoint"
+
+SENTENCE_START = 0
+SENTENCE_END = 10
 
 SAMPLE_PER_SENTENCE = 250
 
@@ -137,8 +147,444 @@ def crop_video(file, fileName, folderName):
     # print('save npz')
 
 
+def VGG_2(i_vgg):
+    #    input_data = Input(name='input', shape=(None,224, 224, 3), dtype = "float16")
+    # Izda.add(TimeDistributed(
+    #    Convolution2D(40,3,3,border_mode='same'), input_shape=(sequence_lengths, 1,8,10)))
+    #    model = Sequential()
+    # Izda.add(TimeDistributed(
+    #    Convolution2D(40,3,3,border_mode='same'), input_shape=(sequence_lengths, 1,8,10)))
+
+    # #    i_vgg = tf.keras.layers.Input(batch_shape=(None,55,224,224,3))
+    # model = TimeDistributed(
+    #     Conv2D(filters=64, kernel_size=(3, 3), padding="same", activation="relu", name='block1_conv1'))(i_vgg)
+    # model = TimeDistributed(
+    #     Conv2D(filters=64, kernel_size=(3, 3), padding="same", activation="relu", name='block1_conv2'))(model)
+    # model = TimeDistributed(MaxPooling2D(pool_size=(2, 2), strides=(2, 2)))(model)
+    # model = TimeDistributed(
+    #     Conv2D(filters=128, kernel_size=(3, 3), padding="same", activation="relu", name='block2_conv1'))(model)
+    # model = TimeDistributed(
+    #     Conv2D(filters=128, kernel_size=(3, 3), padding="same", activation="relu", name='block2_conv2'))(model)
+    # model = TimeDistributed(MaxPooling2D(pool_size=(2, 2), strides=(2, 2)))(model)
+    model1 = TimeDistributed(
+        Conv2D(filters=256, kernel_size=(3, 3), padding="same", activation="relu", name='block3_conv1'))(i_vgg)
+    model1 = TimeDistributed(
+        Conv2D(filters=256, kernel_size=(3, 3), padding="same", activation="relu", name='block3_conv2'))(model1)
+    model1 = TimeDistributed(
+        Conv2D(filters=256, kernel_size=(3, 3), padding="same", activation="relu", name='block3_conv3'))(model1)
+    model1 = TimeDistributed(MaxPooling2D(pool_size=(2, 2), strides=(2, 2)))(model1)
+    model1 = TimeDistributed(
+        Conv2D(filters=512, kernel_size=(3, 3), padding="same", activation="relu", name='block4_conv1'))(model1)
+    model1 = TimeDistributed(
+        Conv2D(filters=512, kernel_size=(3, 3), padding="same", activation="relu", name='block4_conv2'))(model1)
+
+    # model1 = TimeDistributed(MaxPooling2D(pool_size=(2, 2), strides=(2, 2)))(model1)
+    model = TimeDistributed(GlobalAveragePooling2D(name="global_max_full"))(model1)
+
+    #    model = (MaxPooling3D(pool_size=(1, 2, 2)))(model)
+    #    model1 = (TimeDistributed(GlobalAveragePooling2D(name="global_max_full")))(model1)
+
+    #    model.compile(loss='mean_squared_error', optimizer='adam')  #,
+
+    return model
+
+
+# Residual block
+def ResBlock(x, filters, kernel_size, dilation_rate):
+    r = Conv1D(filters, kernel_size, padding='same', dilation_rate=dilation_rate, activation='elu')(
+        x)  # first convolution
+    r = Conv1D(filters, kernel_size, padding='same', dilation_rate=dilation_rate)(r)  # Second convolution
+    if x.shape[-1] == filters:
+        shortcut = x
+    else:
+        shortcut = Conv1D(filters, kernel_size, padding='same')(x)  # shortcut (shortcut)
+    o = Add()([r, shortcut])
+    o = Activation('elu')(o)  # Activation function
+    return o
+
+
+def TCN_layer(input_layer, kernel):
+    #    inputs=Input(shape=(28,28))
+    # print(input_layer)
+    x = ResBlock(input_layer, filters=64, kernel_size=kernel, dilation_rate=1)
+    x = ResBlock(x, filters=64, kernel_size=kernel, dilation_rate=2)
+    x = ResBlock(x, filters=64, kernel_size=kernel, dilation_rate=4)
+    x = ResBlock(x, filters=64, kernel_size=kernel, dilation_rate=8)
+    #    x=Flatten()(x)
+    return x
+
+
+def train_ctc(shuffle=True):
+    x_data, y_data, x_len, y_len, x_data_val, y_data_val, x_len_val, y_len_val, max_len = generate_data()
+
+    # if shuffle:
+    #     c = list(zip(x_data, y_data))
+    #     random.shuffle(c)
+    #     x_data, y_data = zip(*c)
+
+    # Input from intermediate layer
+    i_vgg = tf.keras.Input(name="input_1", shape=(max_len, 56, 56, 256))
+
+    vgg = VGG_2(i_vgg)
+    # m_vgg = Model(inputs=[i_vgg], outputs=[vgg])
+
+    # TCN
+
+    '''
+    TCN -> Dense
+    '''
+
+    o_tcn_full = TCN_layer(vgg, 5)
+    # global_pool = GlobalAveragePooling2D(name="global_max_full")(o_tcn_full)
+    # flatten = Flatten()(o_tcn_full) # using flatten to sync the network size - disabled if 'TMC FULL'
+    dense = Dense(256, name='dense_o_tcn1')(o_tcn_full)
+
+    '''
+    TMC (cont)
+    '''
+
+    o_tcn_block1 = TCN_layer(dense, 1)
+    o_tcn_block1 = Dense(256, name='dense_o_tcn_intra_block1')(o_tcn_block1)
+    o_tcn_block1 = Dense(512)(o_tcn_block1)
+    o_tcn_block1 = Dense(512)(o_tcn_block1)
+    block1 = MaxPooling1D(pool_size=5, strides=2)(o_tcn_block1)
+
+    i_tcn2 = block1
+    o_tcn2 = TCN_layer(i_tcn2, 5)
+    # flatten2 = Flatten()(o_tcn2) # using flatten to sync the network size
+    dense2 = Dense(256, name='dense_o_tcn2')(o_tcn2)
+    o_tcn_block2 = TCN_layer(dense2, 1)
+    o_tcn_block2 = Dense(512, name='dense_o_tcn_intra_block2')(o_tcn_block2)
+    o_tcn_block2 = Dense(512)(o_tcn_block2)
+    block2 = MaxPooling1D(pool_size=5, strides=2)(o_tcn_block2)
+
+    '''
+    TMC (cont) # endregion
+    
+    '''
+
+    '''
+    Sequence Learning
+    '''
+
+    blstm = Bidirectional(LSTM(128, return_sequences=True, dropout=0.1))(block2)
+    dense = TimeDistributed(Dense(8 + 1, name="dense"))(blstm)  # -- 2
+    outrnn = Activation('softmax', name='softmax')(dense)
+
+    '''
+    Sequence Learning # endregion
+    '''
+
+    network = CTCModel([i_vgg], [outrnn])  # -- 4
+
+    print(network.get_model_train())
+
+    network.compile(optimizer=Adam(lr=0.00001))
+
+    network.summary()
+
+    metrics_names = ['val']
+
+    print(np.asarray(x_data).shape)
+    print(np.asarray(y_data).shape)
+
+    batch_size = 1
+    epochs = 1
+
+    loss_ = 999999999
+
+    acc_model = []
+    loss_model = []
+
+    for epoch in range(0, epochs):
+        print(f'EPOCH : {epoch}')
+
+        acc = []
+        loss = []
+
+        pb_i = Progbar(len(x_data), stateful_metrics=metrics_names)
+
+        y_zeros = np.zeros(len(x_data))
+
+        for i in range(0, len(x_data) // batch_size):
+            X = x_data[i * batch_size:min(len(x_data), (i + 1) * batch_size)]
+            y = y_data[i * batch_size:min(len(y_data), (i + 1) * batch_size)]
+
+            X_len = x_len[i * batch_size:min(len(x_len), (i + 1) * batch_size)]
+            Y_len = y_len[i * batch_size:min(len(y_len), (i + 1) * batch_size)]
+
+            Y_zeros = y_zeros[i * batch_size:min(len(y_zeros), (i + 1) * batch_size)]
+
+            x_list = []
+            y_list = []
+
+            x_len_list = []
+            y_len_list = []
+
+            Y_zeros_list = []
+
+            # print(f'\nLoad data {epoch} / batch {i}')
+            for i_data in range(0, len(X)):
+                # x_seq, y_seq = sentence_sequence_generator_npz(X[i_data], y[i_data])
+
+                load_npz = np.load(X[i_data][0])
+
+                load_npz = np.pad(load_npz['arr_0'], ((0, max_len - X_len[i_data]), (0, 0), (0, 0), (0, 0)), 'constant',
+                                  constant_values=(0, 0))
+
+                x_list.append(load_npz)
+                # y_list.append(np.asarray(y[i_data]))
+
+                # x_len_list.append(np.asarray(X_len[i_data]))
+
+                label = np.where(y[i_data])[1]
+
+                y_list.append(label)
+
+                # Hardcoded ???
+                x_len_list.append(58)
+                y_len_list.append(np.asarray(Y_len[i_data]))
+
+                Y_zeros_list.append(Y_zeros[i_data])
+
+            # label = np.where(y_list)[2]
+            #
+            # y_test = []
+            #
+            # y_test.append(label)
+
+            # print(label)
+
+            y_list = tf.keras.preprocessing.sequence.pad_sequences(
+                y_list, padding="post"
+            )
+
+            history = network.train_on_batch(
+                x=[np.array(x_list), np.array(y_list), np.array(x_len_list), np.array(y_len_list)],
+                y=np.array(Y_zeros_list))
+
+            # history = network.fit(
+            #     x=[np.array(x_list), np.array(y_list), np.array(x_len_list), np.array(y_len_list)], y=np.array(Y_zeros_list), batch_size=1)
+
+            # print(f'history : {history}')
+
+            values = [('val', history)]
+
+            pb_i.add(batch_size, values=values)
+
+            # acc.append(history[1])
+            # loss.append(history[0])
+
+            # print(f'Loss : {X[0]}')
+            # print(X)
+
+        network.save_model(f'{MODEL_SAVE_PATH}/')
+
+        loaded = CTCModel(None, None)
+        loaded.load_model(r'F:\Dataset\Sign Language\CSL Model + Keypoint\\', optimizer=Adam(lr=0.00001), init_archi=False)
+
+        # loaded.model
+
+        loaded.summary()
+
+        # print(f'Loss : {np.average(np.array(loss))}, Accuracy : {np.average(np.array(acc))}')
+        # acc_model.append(np.average(np.array(acc)))
+        # loss_model.append(np.average(np.array(loss)))
+
+        # if epoch > 1:
+        #     xd, yd, xl, yl = sentence_dataset_generator(sample_number=1)
+        #
+        #     test_data = []
+        #
+        #     for i in range(0, len(SENTENCE_ARRAY)):
+        #         xs, ys = sentence_sequence_generator_npz(xd[i], yd[i])
+        #         test_data.append(xs)
+        #
+        #     # print(np.array(test_data).shape)
+        #
+        #     result = network.predict(x=[np.array(test_data), np.array([5, 5, 5, 5, 5])])
+        #     words = np.where(result != -1)
+        #     print("word", words)
+        #     print(result)
+        #     print(np.asarray(result[0]).shape)
+
+        # if np.average(np.array(loss)) < loss_:
+        #     loss_ = np.average(np.array(loss))
+        #     network.save(
+        #         filepath=f'{MODEL_SAVE_PATH}{"CTC_FULL_LSA64"}_{loss_}.h5')
+
+        # val_loss = []
+        # for i in range(0, len(x_data) // batch_size):
+        #     X = x_data[i * batch_size:min(len(x_data), (i + 1) * batch_size)]
+        #     y = y_data[i * batch_size:min(len(y_data), (i + 1) * batch_size)]
+        #     val_loss.append(tcn_model.validate_on_batch(X, y))
+        #
+        # print('Validation Loss: ' + str(np.mean(val_loss)))
+
+    # network.save_model(path_dir=f'{MODEL_SAVE_PATH}')
+
+    print(acc_model)
+    print(loss_model)
+
+    print('train')
+
+
+def generate_data(class_count=2):
+    sentences = {0: ['他的', '同学', '是', '警察'], 1: ['他', '妈妈', '的', '同学', '是', '公务', '员'], 2: ['我的', '爸爸', '是', '商人'],
+                 3: ['他', '哥哥', '的', '目标', '是', '解放', '军'], 4: ['他', '姐姐', '的', '目标', '是', '模特'],
+                 5: ['我', '朋友', '的', '祖父', '是', '工人'], 6: ['我', '同学', '的', '妈妈', '是', '保姆'],
+                 7: ['我', '同学', '的', '妹妹', '是', '护士'], 8: ['我的', '妻子', '是', '教师'], 9: ['我的', '丈夫', '是', '导演'],
+                 10: ['他', '哥哥', '的', '朋友', '是', '演员'], 11: ['他的', '女朋友', '是', '护士'],
+                 12: ['她', '丈夫', '的', '朋友', '是', '教练'], 13: ['他', '哥哥', '的', '同学', '是', '医生'],
+                 14: ['他', '妹妹', '的', '同学', '是', '律师'], 15: ['他的', '邻居', '是', '残疾', '人'], 16: ['他的', '外祖母', '是', '园丁'],
+                 17: ['他的', '祖父', '是', '炊事员'], 18: ['我', '表哥', '的', '邻居', '是', '记者'], 19: ['他的', '丈夫', '是', '警察'],
+                 20: ['我', '公公', '是', '牧民'], 21: ['我', '婆婆', '是', '保育', '员'], 22: ['他', '儿子', '是', '弱', '智', '人'],
+                 23: ['我', '嫂嫂', '是', '画家'], 24: ['你', '祖父', '是', '知识', '分子'], 25: ['你', '外祖父', '是', '猎', '手'],
+                 26: ['他', '爸爸', '是', '保安'], 27: ['他', '妈妈', '是', '裁缝'], 28: ['他', '外祖父', '是', '邮递', '员'],
+                 29: ['他', '祖母', '是', '聋人'], 30: ['我', '公公', '是', '门', '卫'], 31: ['你', '妹妹', '是', '会计'],
+                 32: ['你', '哥哥', '是', '武', '警'], 33: ['你', '婆婆', '是', '盲人'], 34: ['你', '爸爸', '是', '编辑'],
+                 35: ['她', '外祖父', '是', '农民'], 36: ['我', '儿子', '是', '职员'], 37: ['他', '弟弟', '是', '向导'],
+                 38: ['他', '岳父', '是', '残疾', '人'], 39: ['他', '姐夫', '是', '刑警'], 40: ['我的', '新', '尺子', '是', '歪', '的'],
+                 41: ['提高', '他的', '社会', '地位'], 42: ['紧张', '的', '工作', '气氛'], 43: ['工作', '效益', '稳定', '提高'],
+                 44: ['工作', '环境', '的', '改善'], 45: ['民主', '团结', '的', '局势'], 46: ['我的', '毛毯', '是', '新的'],
+                 47: ['现实', '情况', '我', '容易', '紧张'], 48: ['形成', '稳定', '的', '基础'], 49: ['社会', '团结', '是', '基础'],
+                 50: ['我们', '的', '国家', '富强', '民主'], 51: ['国民', '的', '婚姻', '幸福'], 52: ['我们', '是', '自由', '恋爱'],
+                 53: ['我们', '捐献', '的是', '毛毯'], 54: ['茶壶', '是', '褐色', '的'], 55: ['他的', '工作', '是', '美容'],
+                 56: ['搞清', '形势', '是', '困难', '的'], 57: ['发挥', '我们', '的', '优势'], 58: ['扭转', '局面', '是', '困难', '的'],
+                 59: ['现实', '是', '学生', '任务', '多'], 60: ['社会', '的', '安定'], 61: ['地球', '是', '行星'],
+                 62: ['月亮', '是', '地球', '的', '卫星'], 63: ['太阳', '是', '恒星'], 64: ['国家', '经济', '情况', '好'],
+                 65: ['他的', '前途', '事业', '成功'], 66: ['他们', '的', '国家', '摆脱', '贫苦'], 67: ['社会', '地位', '的', '提高'],
+                 68: ['颜色', '是', '丰富', '的'], 69: ['社会', '就业', '形势', '好'], 70: ['他的', '工作', '经验', '丰富'],
+                 71: ['剪刀', '是', '锋利', '的'], 72: ['新的', '被子', '是', '破', '的'], 73: ['天气', '预报', '有', '雨'],
+                 74: ['他的', '盆', '是', '绿', '的'], 75: ['杯子', '是', '橙色', '的'], 76: ['加强', '国家', '的', '保卫'],
+                 77: ['他', '放弃', '目标'], 78: ['引导', '他人', '成功'], 79: ['结果', '圆满', '成功'], 80: ['他的', '手表', '是', '坏', '的'],
+                 81: ['他的', '牙刷', '疏'], 82: ['洗脸盆', '是', '空', '的'], 83: ['招聘', '的', '岗位', '多'], 84: ['我们', '拜访', '外祖父'],
+                 85: ['事情', '有', '改善'], 86: ['我们', '的', '友谊', '深'], 87: ['裁缝', '有', '针线'], 88: ['妈妈', '有', '项链'],
+                 89: ['我有', '打火', '机'], 90: ['天空', '没有', '星星'], 91: ['他的', '小孩子', '有', '礼貌'], 92: ['他', '招呼', '你来'],
+                 93: ['观察', '他的', '情况'], 94: ['我', '推荐', '他', '去', '就业'], 95: ['手电筒', '有', '电池'],
+                 96: ['我们', '的', '婚姻', '是', '幸福', '的'], 97: ['国家', '稳定', '是', '幸福', '的', '基础'],
+                 98: ['社会', '地位', '是', '平等', '的'], 99: ['我的', '毛巾', '是', '干', '的']}
+
+    classes = [i for i in range(class_count)]
+    for k in list(sentences):
+        if k not in set(classes):
+            del sentences[k]
+    classes_col = []
+    paths_col = []
+    path = OUTPUT_PATH
+    for c in classes:
+        paths = os.listdir('{}/{}/'.format(path, str(c).zfill(6)))
+        paths = list(map(lambda x: '{}/{}/{}'.format(path, str(c).zfill(6), x), paths))
+        classes_col += [c for i in range(len(paths))]
+        paths_col += paths
+
+    print(classes_col[0])
+    print(paths_col[0])
+
+    input_len = []
+    max_vid_len = 0
+
+    for vid in paths_col:
+        # loaded = np.load(vid)
+        # print(loaded['arr_0'].shape)
+        # print(r'F:\Dataset\Sign Language\CSL\pytorch\color/' + vid[-29:-3] + 'avi')
+        cap = cv2.VideoCapture(r'F:\Dataset\Sign Language\CSL\pytorch\color/' + vid[-29:-3] + 'avi')
+        length = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+        input_len.append(length)
+        if length > max_vid_len:
+            max_vid_len = length
+        # print(length)
+
+    print(input_len)
+    print(max_vid_len)
+
+    # y_data = tf.keras.utils.to_categorical(classes_col, num_classes=5)
+
+    # print(y_data[0])
+
+    y_df, x_df = pd.DataFrame(classes_col), pd.DataFrame(paths_col)
+
+    y_df = y_df.apply(lambda x: sentences[x[0]], axis=1)
+    x_df.shape, y_df.shape
+
+    # print(x_df[0])
+    # print(y_df[0])
+    # print(classes_col)
+    # print(paths_col)
+
+    from sklearn.preprocessing import LabelEncoder
+    import functools
+    target_tokens = list(functools.reduce(lambda a, b: a.union(b), list(map(lambda x: set(x[1]), sentences.items()))))
+    # target_tokens += ['#START', '#END']
+    num_classes = len(target_tokens)
+    sentences_array = list(map(lambda x: x[1], sentences.items()))
+    max_sentence = len(max(sentences_array, key=lambda x: len(x))) + 2
+    le = LabelEncoder()
+    le.fit(target_tokens)
+    len(target_tokens)
+
+    # sentences_y = y_df.apply(lambda x: ['#START'] + x + ['#END'])
+    sentences_y = y_df.apply(lambda x: x)
+    sentences_y_encoded = sentences_y.apply(lambda x: le.transform(x))
+    decoder_input_data = np.zeros((len(sentences_y_encoded),
+                                   max_sentence, num_classes))
+    decoder_target_data = np.zeros((len(sentences_y_encoded),
+                                    max_sentence, num_classes))
+    for i in range(decoder_input_data.shape[0]):
+        for t in range(sentences_y_encoded[i].shape[0]):
+            decoder_input_data[i, t, sentences_y_encoded[i][t]] = 1
+            if t > 0:
+                decoder_target_data[i, t - 1, sentences_y_encoded[i][t]] = 1
+    decoder_target_data.shape, decoder_input_data.shape
+
+    # build dict of indexes
+    classes = le.classes_
+    transformed = le.transform(classes)
+    decoder_indexes = dict((classes[i], transformed[i]) for i in range(len(classes)))
+    reverse_decoder_indexes = dict((transformed[i], classes[i]) for i in range(len(classes)))
+
+    print(decoder_input_data[0])
+    print(decoder_target_data[0])
+    print(sentences_y[0])
+
+    print(decoder_indexes)
+    # print(reverse_decoder_indexes)
+
+    label_len = []
+    # input_len = []
+
+    for labels in decoder_input_data:
+        count = 0
+        for label in labels:
+            # print(label)
+            if 1 in label:
+                count += 1
+        # print(count)
+        label_len.append(count)
+        # input_len.append(count)
+
+    from sklearn.model_selection import train_test_split
+    sentences_x_train, sentences_x_validation, decoder_input_train, \
+    decoder_input_val, decoder_target_train, decoder_target_val, \
+    sentences_y_train, sentences_y_validation, label_len_train, label_len_val, input_len_train, input_len_val \
+        = train_test_split(x_df, decoder_input_data, decoder_target_data, sentences_y, label_len, input_len,
+                           test_size=0.2)
+    print('last')
+    print(sentences_x_train)
+    print(decoder_input_train)
+    print(label_len_train)
+
+    print(sentences_y_train)
+    # print(decoder_target_train[0])
+
+    return np.asarray(sentences_x_train), decoder_input_train, input_len_train, label_len_train, \
+           np.asarray(sentences_x_validation), decoder_input_val, input_len_val, label_len_val, max_vid_len
+
+
 # Press the green button in the gutter to run the script.
 if __name__ == '__main__':
     # load_data() # crop + output 4th layer
+    # generate_data()
+    train_ctc()
 
 # See PyCharm help at https://www.jetbrains.com/help/pycharm/

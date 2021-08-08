@@ -62,10 +62,12 @@ if __name__ == '__main__':
     fig = plt.figure()
     ax = plt.axes(projection='3d')
 
+    xdata = []
+    ydata = []
+    zdata = []
+
     for frame in skel:
-        xdata = []
-        ydata = []
-        zdata = []
+
         for key in frame:
             # print(key[0])
 

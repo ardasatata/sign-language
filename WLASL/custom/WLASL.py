@@ -11,7 +11,7 @@ from numpy import savez_compressed, savez
 import tensorflow as tf
 # import tensorflow.keras as keras
 import progressbar
-from tensorflow.python.keras.backend import placeholder
+from tensorflow.python.keras.backend import placeholder, concatenate
 from tensorflow.python.keras.models import load_model
 
 from extract_layer4 import get_output_layer
@@ -31,7 +31,7 @@ PREVIEW = False
 DEBUG = False
 OUTPUT_PATH = r'D:\WLASL\wlasl_100_out_4'
 
-OUTPUT_PATH = r'F:\Dataset\Sign Language\WLASL-Alter\Output-2'
+OUTPUT_PATH = r'F:\Dataset\Sign Language\WLASL-Alter\Output'
 
 MODEL_SAVE_PATH = r'F:\WLASL\model2'
 
@@ -39,6 +39,8 @@ physical_devices = tf.config.list_physical_devices('GPU')
 tf.config.experimental.set_memory_growth(physical_devices[0], True)
 
 MAX_FRAME = 64
+
+KEYPOINT_PATH = r"F:\Dataset\Sign Language\WLASL-Alter\Key"
 
 
 def NormalizeData(data):
@@ -67,17 +69,32 @@ def get_num_class(split_file):
 
 
 test_class = [0, 1]
-get_class = [0,1,2,3,4]
+get_class = [0, 1, 2, 3, 4]
 
 skip_list = [
-             "07073",
-             "17728", "17722", "17721", "17718", "65540", "17733",
-             "68028", "12306", "12316", "12317", "12314", "12312", "12318", "12319", "12323", "12322", "12321", "12327", "12326", "12335", "12331", "12332", "69054",
-             "05736", "05730", "05733", "05739", "05740", "05744", "05747", '05750', "65167", "05748", "05729", "05727",
-             "09863",
+    "07073",
+    "17728", "17722", "17721", "17718", "65540", "17733",
+    "68028", "12306", "12316", "12317", "12314", "12312", "12318", "12319", "12323", "12322", "12321", "12327", "12326",
+    "12335", "12331", "12332", "69054",
+    "05736", "05730", "05733", "05739", "05740", "05744", "05747", '05750', "65167", "05748", "05729", "05727",
+    "09863",
 
-                "05743", "70266"
-             ]
+    "05743", "70266"
+]
+
+selected_joints = {
+    '59': np.concatenate((np.arange(0, 17), np.arange(91, 133)), axis=0),  # 59
+    '31': np.concatenate((np.arange(0, 11), [91, 95, 96, 99, 100, 103, 104, 107, 108, 111],
+                          [112, 116, 117, 120, 121, 124, 125, 128, 129, 132]), axis=0),  # 31
+    '27': np.concatenate(([0, 5, 6, 7, 8, 9, 10],
+                          [91, 95, 96, 99, 100, 103, 104, 107, 108, 111],
+                          [112, 116, 117, 120, 121, 124, 125, 128, 129, 132]), axis=0),  # 27
+    '27_2': np.concatenate(([0, 5, 6, 7, 8, 9, 10],
+                            [91, 95, 96, 99, 100, 103, 104, 107, 108, 111],
+                            [112, 116, 117, 120, 121, 124, 125, 128, 129, 132]), axis=0)  # 27
+}
+
+selected = selected_joints['27']
 
 
 def make_dataset(split_file, split, root, mode, num_classes):
@@ -387,7 +404,9 @@ def train(split_file, split, root, mode, num_classes=0, shuffle=True):
     max_frame_len = 96
 
     x_data = []
+    x_data_keypoint = []
     x_data_validate = []
+    x_data_validate_keypoint = []
     x_data_, y_data, max_len, frame_len = make_dataset(split_file, split, root, mode, num_classes=num_classes)
     x_data_validate_, y_data_validate, max_len_validate, frame_len_validate = make_dataset(split_file, 'val', root,
                                                                                            mode,
@@ -420,10 +439,12 @@ def train(split_file, split, root, mode, num_classes=0, shuffle=True):
     # convert x to video path
     for file in x_data_:
         x_data.append(f'{OUTPUT_PATH}\{file}.npz')
+        x_data_keypoint.append(f'{KEYPOINT_PATH}\{file}.mp4.npy')
 
     # convert x to video path
     for file in x_data_validate_:
         x_data_validate.append(f'{OUTPUT_PATH}\{file}.npz')
+        x_data_validate_keypoint.append(f'{KEYPOINT_PATH}\{file}.mp4.npy')
 
     print(x_data[0])
     print(y_data[0])
@@ -433,6 +454,10 @@ def train(split_file, split, root, mode, num_classes=0, shuffle=True):
 
     # Input from intermediate layer
     i_vgg = tf.keras.Input(name="input_1", shape=(max_len, 56, 56, 256))
+
+    i_keypoint = tf.keras.Input(name="input_1_keypoint", shape=(max_len, 1, 27, 3))
+    output_keypoint = TimeDistributed(GlobalAveragePooling2D(name="global_max_full"))(i_keypoint)
+    dense_input_keypoint = Dense(256, activation='relu', name='dense_keypoint')(output_keypoint)
 
     vgg = VGG(i_vgg)
     m_vgg = Model(inputs=[i_vgg], outputs=[vgg])
@@ -444,9 +469,11 @@ def train(split_file, split, root, mode, num_classes=0, shuffle=True):
     '''
 
     o_tcn_full = TCN_layer(vgg, 5)
+    o_tcn_keypoint = TCN_layer(dense_input_keypoint, 5)
     # global_pool = GlobalAveragePooling2D(name="global_max_full")(o_tcn_full)
     # flatten = Flatten()(o_tcn_full) # using flatten to sync the network size - disabled if 'TMC FULL'
     dense = Dense(256, activation='relu', name='dense_o_tcn1')(o_tcn_full)
+    dense_keypoint = Dense(256, activation='relu', name='dense_o_keypoint')(o_tcn_keypoint)
 
     '''
     TMC (cont)
@@ -457,6 +484,11 @@ def train(split_file, split, root, mode, num_classes=0, shuffle=True):
     o_tcn_block1 = Dense(256)(o_tcn_block1)
     block1 = MaxPooling1D(pool_size=5, strides=2)(o_tcn_block1)
 
+    o_tcn_key_block1 = TCN_layer(dense_keypoint, 1)
+    o_tcn_key_block1 = Dense(256, name='dense_o_tcn_key_intra_block1')(o_tcn_key_block1)
+    o_tcn_key_block1 = Dense(256)(o_tcn_key_block1)
+    block1_key = MaxPooling1D(pool_size=5, strides=2)(o_tcn_key_block1)
+
     i_tcn2 = block1
     o_tcn2 = TCN_layer(i_tcn2, 5)
     # flatten2 = Flatten()(o_tcn2) # using flatten to sync the network size
@@ -466,6 +498,15 @@ def train(split_file, split, root, mode, num_classes=0, shuffle=True):
     o_tcn_block2 = Dense(256)(o_tcn_block2)
     block2 = MaxPooling1D(pool_size=5, strides=2)(o_tcn_block2)
 
+    i_tcn2_key = block1_key
+    o_tcn2_key = TCN_layer(i_tcn2_key, 5)
+    # flatten2 = Flatten()(o_tcn2) # using flatten to sync the network size
+    dense2_key = Dense(256, activation='relu', name='dense_o_tcn2_key')(o_tcn2_key)
+    o_tcn_key_block2 = TCN_layer(dense2_key, 1)
+    o_tcn_key_block2 = Dense(256, name='dense_o_tcn_key_intra_block2')(o_tcn_key_block2)
+    o_tcn_key_block2 = Dense(256)(o_tcn_key_block2)
+    block2_key = MaxPooling1D(pool_size=5, strides=2)(o_tcn_key_block2)
+
     '''
     TMC (cont) # endregion
     '''
@@ -474,14 +515,16 @@ def train(split_file, split, root, mode, num_classes=0, shuffle=True):
     # blstm = Bidirectional(LSTM(256, return_sequences=True, dropout=0.2))(block2)
     # blstm = Bidirectional(LSTM(128, return_sequences=True, dropout=0.1))(blstm)
 
+    concat = concatenate([block2, block2_key], axis=2)
+
     # classification
-    flatten = Flatten()(block2)  # using flatten to sync the network size
+    flatten = Flatten()(concat)  # using flatten to sync the network size
     dense = Dense(256, activation='relu')(flatten)
     # endregion
 
     # classification total class - dense
     dense = Dense(num_classes, activation='softmax')(dense)
-    tcn_model = Model(inputs=[i_vgg], outputs=[dense])
+    tcn_model = Model(inputs=[i_vgg, i_keypoint], outputs=[dense])
 
     tcn_model.summary()
     # exit(0)
@@ -495,20 +538,20 @@ def train(split_file, split, root, mode, num_classes=0, shuffle=True):
     #     learning_rate=0.0001, epsilon=1e-3, amsgrad=False,
     #     name='Adam'
     # )
-    optimizer = tf.keras.optimizers.Adam(learning_rate=0.001)
+    optimizer = tf.keras.optimizers.Adam(learning_rate=0.0001)
     # optimizer = tf.keras.optimizers.SGD(lr=0.001, momentum=0.9)
 
     # Compile
     metrics_names = ['acc']
     tcn_model.compile(loss=loss, optimizer=optimizer, metrics=metrics_names)
 
-    # Load Previous Train
-    if os.path.exists(f'{MODEL_SAVE_PATH}\TMC_Classification_WLASL_5.h5'):
-        # network.load_weights(r'C:\Users\minelab\dev\TSL\model\LSA64\model_weights.hdf5', by_name=True)
-        print('Load previous model')
-        tcn_model = load_model(f'{MODEL_SAVE_PATH}\TMC_Classification_WLASL_5.h5')
-        print('model loaded.')
-        tcn_model.summary()
+    # # Load Previous Train
+    # if os.path.exists(f'{MODEL_SAVE_PATH}\TMC_Classification_WLASL_5.h5'):
+    #     # network.load_weights(r'C:\Users\minelab\dev\TSL\model\LSA64\model_weights.hdf5', by_name=True)
+    #     print('Load previous model')
+    #     tcn_model = load_model(f'{MODEL_SAVE_PATH}\TMC_Classification_WLASL_5.h5')
+    #     print('model loaded.')
+    #     tcn_model.summary()
 
     batch_size = 4
     epochs = 100
@@ -541,9 +584,11 @@ def train(split_file, split, root, mode, num_classes=0, shuffle=True):
             X = x_data[i * batch_size:min(len(x_data), (i + 1) * batch_size)]
             y = y_data[i * batch_size:min(len(y_data), (i + 1) * batch_size)]
             vid_length = frame_len[i * batch_size:min(len(frame_len), (i + 1) * batch_size)]
+            X_keypoint = x_data_keypoint[i * batch_size:min(len(x_data_keypoint), (i + 1) * batch_size)]
 
             x_list = []
             y_list = []
+            x_key_list = []
 
             # print(f'\nLoad data {epoch} / batch {i}')
             for i_data in range(0, len(X)):
@@ -558,8 +603,18 @@ def train(split_file, split, root, mode, num_classes=0, shuffle=True):
                 x_npz = np.load(X[i_data])
                 x_list.append(np.asarray(x_npz['arr_0'][start_f:start_f + max_frame_len, :, :, :]))
 
+                x_npy = np.load(X_keypoint[i_data])
+                x_npy = x_npy[:, selected, :]
+                # print(x_npy.shape)
+                x_npy = x_npy.reshape((x_npy.shape[0],1,27,3))
+                x_key_list.append(np.asarray(x_npy[start_f:start_f + max_frame_len, :, :, :]))
+
             x_list = tf.keras.preprocessing.sequence.pad_sequences(
                 x_list, padding="post", maxlen=max_len,
+            )
+
+            x_key_list = tf.keras.preprocessing.sequence.pad_sequences(
+                x_key_list, padding="post", maxlen=max_len,
             )
 
             # current_learning_rate = step_decay(epoch)
@@ -568,7 +623,7 @@ def train(split_file, split, root, mode, num_classes=0, shuffle=True):
             # print(np.array(x_list).shape)
             # print(np.array(y_list).shape)
 
-            X = tcn_model.train_on_batch(np.array(x_list), np.array(y_list))
+            X = tcn_model.train_on_batch([np.array(x_list), np.array(x_key_list)], np.array(y_list))
 
             values = [('acc', X[1])]
             pb_i.add(batch_size, values=values)
@@ -582,8 +637,11 @@ def train(split_file, split, root, mode, num_classes=0, shuffle=True):
             y_val = y_data_validate[i * batch_size:min(len(y_data_validate), (i + 1) * batch_size)]
             vid_length = frame_len_validate[i * batch_size:min(len(frame_len_validate), (i + 1) * batch_size)]
 
+            X_keypoint_val = x_data_validate_keypoint[i * batch_size:min(len(x_data_validate_keypoint), (i + 1) * batch_size)]
+
             x_list_val = []
             y_list_val = []
+            x_key_list_val = []
 
             for i_data in range(0, len(X_val)):
                 y_list_val.append(y_val[i_data])
@@ -597,11 +655,21 @@ def train(split_file, split, root, mode, num_classes=0, shuffle=True):
                 x_npz = np.load(X_val[i_data])
                 x_list_val.append(np.asarray(x_npz['arr_0'][start_f:start_f + max_frame_len, :, :, :]))
 
+                x_npy = np.load(X_keypoint_val[i_data])
+                x_npy = x_npy[:, selected, :]
+                # print(x_npy.shape)
+                x_npy = x_npy.reshape((x_npy.shape[0],1,27,3))
+                x_key_list_val.append(np.asarray(x_npy[start_f:start_f + max_frame_len, :, :, :]))
+
             x_list_val = tf.keras.preprocessing.sequence.pad_sequences(
                 x_list_val, padding="post", maxlen=max_len,
             )
 
-            X_val = tcn_model.test_on_batch(np.array(x_list_val), np.array(y_list_val))
+            x_key_list_val = tf.keras.preprocessing.sequence.pad_sequences(
+                x_key_list_val, padding="post", maxlen=max_len,
+            )
+
+            X_val = tcn_model.test_on_batch([np.array(x_list_val), np.array(x_key_list_val)], np.array(y_list_val))
 
             val_acc.append(X_val[1])
             val_loss.append(X_val[0])
