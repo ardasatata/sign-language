@@ -281,6 +281,7 @@ def train():
 
     inputs = tf.keras.Input(name="input_1", shape=(RESOLUTION, RESOLUTION, CHANNEL))
 
+
     # Contruct Model
     x = vgg_mod(inputs)
     model = tf.keras.Model(inputs=inputs, outputs=x)

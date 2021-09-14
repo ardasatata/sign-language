@@ -89,6 +89,8 @@ def get_value(DIR):
 
         print('save npz')
 
+# block3_conv1
+# conv2_block3_preact_relu
 
 def get_output_layer(src=LOAD_IMG, layer_name='block3_conv1'):
     # model = tf.keras.models.load_model(MODEL_NAME)
@@ -99,7 +101,7 @@ def get_output_layer(src=LOAD_IMG, layer_name='block3_conv1'):
     model.load_weights(filepath=MODEL_NAME, by_name=True)
 
     # model.summary()
-
+    #
     # exit()
 
     # img = load_img(img_path, target_size=(224, 224))

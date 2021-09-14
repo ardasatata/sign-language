@@ -28,7 +28,9 @@ from tensorflow.python.keras.callbacks import LearningRateScheduler
 from tensorflow.python.keras.layers import Conv1D, Add, Activation, Lambda, Dense, TimeDistributed, Conv2D, \
     MaxPooling2D, GlobalAveragePooling2D, Flatten, LSTM, Dropout, MaxPooling1D, Bidirectional
 from tensorflow.python.keras.optimizer_v2.adam import Adam
+from tensorflow.python.keras.backend import concatenate
 
+from LSA64 import calculate_wer
 from extract_layer4 import get_output_layer
 
 import numpy as np
@@ -37,20 +39,47 @@ from numpy import savez_compressed
 import pandas as pd
 import os
 
+from tqdm import tqdm
+
 CSL_PATH = r'F:\Dataset\Sign Language\CSL\pytorch\color'
 
-OUTPUT_PATH = r'F:\Dataset\Sign Language\CSL-Output'
-OUTPUT_PATH = r'F:\Dataset\Sign Language\CSL-Output_test'
+# OUTPUT_PATH = r'F:\Dataset\Sign Language\CSL-Output'
+OUTPUT_PATH = r'D:\Dataset\Sign Language\CSL-Output'
+# OUTPUT_PATH = r'F:\Dataset\Sign Language\CSL-Output-ResNet'
+KEYPOINT_PATH = r'F:\Dataset\Sign Language\CSL-Key'
+# MODEL_SAVE_PATH = r"F:\Dataset\Sign Language\CSL Model + Keypoint"
+MODEL_SAVE_PATH = r"F:\Dataset\Sign Language\CSL Model + Keypoint Resnet"
+CLASS_COUNT = 99
 
-MODEL_SAVE_PATH = r"F:\Dataset\Sign Language\CSL Model + Keypoint"
+# TESTING #
+# KEYPOINT_PATH = r'F:\Dataset\Sign Language\CSL-Key_test'
+# OUTPUT_PATH = r'F:\Dataset\Sign Language\CSL-Output_test'
+# MODEL_SAVE_PATH = r"F:\Dataset\Sign Language\CSL Model + Keypoint - Test"
+# CLASS_COUNT = 2
 
-SENTENCE_START = 0
-SENTENCE_END = 10
+
+
+SENTENCE_START = 75
+SENTENCE_END = 100
 
 SAMPLE_PER_SENTENCE = 250
 
 PREVIEW = False
 DEBUG = False
+
+selected_joints = {
+    '59': np.concatenate((np.arange(0, 17), np.arange(91, 133)), axis=0),  # 59
+    '31': np.concatenate((np.arange(0, 11), [91, 95, 96, 99, 100, 103, 104, 107, 108, 111],
+                          [112, 116, 117, 120, 121, 124, 125, 128, 129, 132]), axis=0),  # 31
+    '27': np.concatenate(([0, 5, 6, 7, 8, 9, 10],
+                          [91, 95, 96, 99, 100, 103, 104, 107, 108, 111],
+                          [112, 116, 117, 120, 121, 124, 125, 128, 129, 132]), axis=0),  # 27
+    '27_2': np.concatenate(([0, 5, 6, 7, 8, 9, 10],
+                            [91, 95, 96, 99, 100, 103, 104, 107, 108, 111],
+                            [112, 116, 117, 120, 121, 124, 125, 128, 129, 132]), axis=0)  # 27
+}
+
+selected = selected_joints['27']
 
 
 def load_data():
@@ -62,7 +91,7 @@ def load_data():
 
         files = [f for f in listdir(folders[sentence]) if isfile(join(folders[sentence], f))]
 
-        with progressbar.ProgressBar(max_value=SAMPLE_PER_SENTENCE) as bar:
+        with tqdm(total=SAMPLE_PER_SENTENCE) as bar:
             for idx, file in enumerate(files):
                 crop_video(f'{folders[sentence]}\{file}', file[:-4], str(sentence).zfill(6))
                 bar.update(idx)
@@ -77,6 +106,12 @@ def crop_video(file, fileName, folderName):
         print(file)
         print(fileName)
         print(folderName)
+
+    save_file = f'{OUTPUT_PATH}\{folderName}\{fileName}.npz'
+
+    if isfile(save_file):
+        print('exist ' + save_file)
+        return
 
     try:
         cap = cv2.VideoCapture(file)
@@ -124,15 +159,16 @@ def crop_video(file, fileName, folderName):
         save_dir = f'{OUTPUT_PATH}\{folderName}'
 
         # if isdir(save_dir):
+        #     print(save_dir)
         #     print('exist')
         #     exit(0)
         #     savez_compressed(f'{OUTPUT_PATH}\{folderName}\{fileName}.npz', output)
-        # else :
+        # # else :
 
         if not os.path.exists(save_dir):
             os.makedirs(save_dir)
 
-        savez_compressed(f'{OUTPUT_PATH}\{folderName}\{fileName}.npz', output)
+        savez_compressed(save_file, output)
 
         # exit(0)
 
@@ -215,7 +251,8 @@ def TCN_layer(input_layer, kernel):
 
 
 def train_ctc(shuffle=True):
-    x_data, y_data, x_len, y_len, x_data_val, y_data_val, x_len_val, y_len_val, max_len = generate_data()
+    x_data, y_data, x_len, y_len, x_data_val, y_data_val, x_len_val, y_len_val, x_data_keypoint, x_data_keypoint_validate, max_len, num_classes, skipped_max_len = generate_data(class_count=CLASS_COUNT)
+
 
     # if shuffle:
     #     c = list(zip(x_data, y_data))
@@ -223,7 +260,12 @@ def train_ctc(shuffle=True):
     #     x_data, y_data = zip(*c)
 
     # Input from intermediate layer
-    i_vgg = tf.keras.Input(name="input_1", shape=(max_len, 56, 56, 256))
+    i_vgg = tf.keras.Input(name="input_1", shape=(skipped_max_len, 56, 56, 256))
+
+    # Input Keypoint
+    i_keypoint = tf.keras.Input(name="input_1_keypoint", shape=(skipped_max_len, 1, 27, 3))
+    output_keypoint = TimeDistributed(GlobalAveragePooling2D(name="global_max_full"))(i_keypoint)
+    dense_input_keypoint = Dense(256, activation='relu', name='dense_keypoint')(output_keypoint)
 
     vgg = VGG_2(i_vgg)
     # m_vgg = Model(inputs=[i_vgg], outputs=[vgg])
@@ -235,9 +277,13 @@ def train_ctc(shuffle=True):
     '''
 
     o_tcn_full = TCN_layer(vgg, 5)
+    o_tcn_keypoint = TCN_layer(dense_input_keypoint, 5)
+
     # global_pool = GlobalAveragePooling2D(name="global_max_full")(o_tcn_full)
     # flatten = Flatten()(o_tcn_full) # using flatten to sync the network size - disabled if 'TMC FULL'
+
     dense = Dense(256, name='dense_o_tcn1')(o_tcn_full)
+    dense_keypoint = Dense(256, activation='relu', name='dense_o_keypoint')(o_tcn_keypoint)
 
     '''
     TMC (cont)
@@ -249,6 +295,11 @@ def train_ctc(shuffle=True):
     o_tcn_block1 = Dense(512)(o_tcn_block1)
     block1 = MaxPooling1D(pool_size=5, strides=2)(o_tcn_block1)
 
+    o_tcn_key_block1 = TCN_layer(dense_keypoint, 1)
+    o_tcn_key_block1 = Dense(256, name='dense_o_tcn_key_intra_block1')(o_tcn_key_block1)
+    o_tcn_key_block1 = Dense(256)(o_tcn_key_block1)
+    block1_key = MaxPooling1D(pool_size=5, strides=2)(o_tcn_key_block1)
+
     i_tcn2 = block1
     o_tcn2 = TCN_layer(i_tcn2, 5)
     # flatten2 = Flatten()(o_tcn2) # using flatten to sync the network size
@@ -257,6 +308,18 @@ def train_ctc(shuffle=True):
     o_tcn_block2 = Dense(512, name='dense_o_tcn_intra_block2')(o_tcn_block2)
     o_tcn_block2 = Dense(512)(o_tcn_block2)
     block2 = MaxPooling1D(pool_size=5, strides=2)(o_tcn_block2)
+
+    i_tcn2_key = block1_key
+    o_tcn2_key = TCN_layer(i_tcn2_key, 5)
+    # flatten2 = Flatten()(o_tcn2) # using flatten to sync the network size
+    dense2_key = Dense(256, activation='relu', name='dense_o_tcn2_key')(o_tcn2_key)
+    o_tcn_key_block2 = TCN_layer(dense2_key, 1)
+    o_tcn_key_block2 = Dense(256, name='dense_o_tcn_key_intra_block2')(o_tcn_key_block2)
+    o_tcn_key_block2 = Dense(256)(o_tcn_key_block2)
+    block2_key = MaxPooling1D(pool_size=5, strides=2)(o_tcn_key_block2)
+
+    # Concat VGG + Keypoint
+    concat = concatenate([block2, block2_key], axis=2)
 
     '''
     TMC (cont) # endregion
@@ -267,15 +330,15 @@ def train_ctc(shuffle=True):
     Sequence Learning
     '''
 
-    blstm = Bidirectional(LSTM(128, return_sequences=True, dropout=0.1))(block2)
-    dense = TimeDistributed(Dense(8 + 1, name="dense"))(blstm)  # -- 2
+    blstm = Bidirectional(LSTM(128, return_sequences=True, dropout=0.1))(concat)
+    dense = TimeDistributed(Dense(num_classes + 1, name="dense"))(blstm)  # -- 2
     outrnn = Activation('softmax', name='softmax')(dense)
 
     '''
     Sequence Learning # endregion
     '''
 
-    network = CTCModel([i_vgg], [outrnn])  # -- 4
+    network = CTCModel([i_vgg, i_keypoint], [outrnn])  # -- 4
 
     print(network.get_model_train())
 
@@ -289,22 +352,25 @@ def train_ctc(shuffle=True):
     print(np.asarray(y_data).shape)
 
     batch_size = 1
-    epochs = 1
+    epochs = 20
 
     loss_ = 999999999
 
     acc_model = []
     loss_model = []
+    error_model = []
 
     for epoch in range(0, epochs):
-        print(f'EPOCH : {epoch}')
+        print(f'EPOCH : {epoch + 1}')
 
         acc = []
         loss = []
+        wers = []
 
         pb_i = Progbar(len(x_data), stateful_metrics=metrics_names)
 
         y_zeros = np.zeros(len(x_data))
+        y_zeros_validate = np.zeros(len(x_data_keypoint_validate))
 
         for i in range(0, len(x_data) // batch_size):
             X = x_data[i * batch_size:min(len(x_data), (i + 1) * batch_size)]
@@ -314,6 +380,7 @@ def train_ctc(shuffle=True):
             Y_len = y_len[i * batch_size:min(len(y_len), (i + 1) * batch_size)]
 
             Y_zeros = y_zeros[i * batch_size:min(len(y_zeros), (i + 1) * batch_size)]
+            X_keypoint = x_data_keypoint[i * batch_size:min(len(x_data_keypoint), (i + 1) * batch_size)]
 
             x_list = []
             y_list = []
@@ -322,6 +389,10 @@ def train_ctc(shuffle=True):
             y_len_list = []
 
             Y_zeros_list = []
+            x_key_list = []
+
+            # TODO Get value from network softmax Layer
+            length = 79
 
             # print(f'\nLoad data {epoch} / batch {i}')
             for i_data in range(0, len(X)):
@@ -329,8 +400,25 @@ def train_ctc(shuffle=True):
 
                 load_npz = np.load(X[i_data][0])
 
-                load_npz = np.pad(load_npz['arr_0'], ((0, max_len - X_len[i_data]), (0, 0), (0, 0), (0, 0)), 'constant',
+                print(X[i_data][0])
+                print(X_keypoint[i_data])
+
+                # print(np.array(load_npz['arr_0']).shape)
+                # print(np.array(load_npz['arr_0'][::2, :, :, :]).shape)
+
+                x_skipped = load_npz['arr_0'][::2, :, :, :]
+
+                load_npz = np.pad(x_skipped, ((0, skipped_max_len - X_len[i_data]), (0, 0), (0, 0), (0, 0)), 'constant',
                                   constant_values=(0, 0))
+
+                x_npy = np.load(X_keypoint[i_data])
+                x_npy = x_npy[:, selected, :]
+
+                x_npy_skipped = x_npy[::2, :, :]
+
+                x_npy = x_npy_skipped.reshape((x_npy_skipped.shape[0],1,27,3))
+                x_npy = np.pad(x_npy, ((0, skipped_max_len - X_len[i_data]), (0, 0), (0, 0), (0, 0)), 'constant', constant_values=(0, 0))
+                x_key_list.append(np.asarray(x_npy))
 
                 x_list.append(load_npz)
                 # y_list.append(np.asarray(y[i_data]))
@@ -342,7 +430,7 @@ def train_ctc(shuffle=True):
                 y_list.append(label)
 
                 # Hardcoded ???
-                x_len_list.append(58)
+                x_len_list.append(length)
                 y_len_list.append(np.asarray(Y_len[i_data]))
 
                 Y_zeros_list.append(Y_zeros[i_data])
@@ -359,8 +447,10 @@ def train_ctc(shuffle=True):
                 y_list, padding="post"
             )
 
+            input = [np.array(x_list), np.array(x_key_list), np.array(y_list), np.array(x_len_list), np.array(y_len_list)]
+
             history = network.train_on_batch(
-                x=[np.array(x_list), np.array(y_list), np.array(x_len_list), np.array(y_len_list)],
+                x=input,
                 y=np.array(Y_zeros_list))
 
             # history = network.fit(
@@ -378,14 +468,107 @@ def train_ctc(shuffle=True):
             # print(f'Loss : {X[0]}')
             # print(X)
 
+        # Validate dataset
+        for i in range(0, len(x_data_keypoint_validate) // batch_size):
+            X = x_data_val[i * batch_size:min(len(x_data_val), (i + 1) * batch_size)]
+            y = y_data_val[i * batch_size:min(len(y_data_val), (i + 1) * batch_size)]
+
+            X_len = x_len_val[i * batch_size:min(len(x_len_val), (i + 1) * batch_size)]
+            Y_len = y_len_val[i * batch_size:min(len(y_len_val), (i + 1) * batch_size)]
+
+            Y_zeros = y_zeros_validate[i * batch_size:min(len(y_zeros_validate), (i + 1) * batch_size)]
+            X_keypoint = x_data_keypoint_validate[i * batch_size:min(len(x_data_keypoint_validate), (i + 1) * batch_size)]
+
+            x_list = []
+            y_list = []
+
+            x_len_list = []
+            y_len_list = []
+
+            Y_zeros_list = []
+            x_key_list = []
+
+            # print(f'\nLoad data {epoch} / batch {i}')
+            for i_data in range(0, len(X)):
+                # x_seq, y_seq = sentence_sequence_generator_npz(X[i_data], y[i_data])
+
+                load_npz = np.load(X[i_data][0])
+
+                x_skipped = load_npz['arr_0'][::2, :, :, :]
+
+                load_npz = np.pad(x_skipped, ((0, skipped_max_len - X_len[i_data]), (0, 0), (0, 0), (0, 0)), 'constant',
+                                  constant_values=(0, 0))
+
+                x_npy = np.load(X_keypoint[i_data])
+                x_npy = x_npy[:, selected, :]
+
+                x_npy_skipped = x_npy[::2, :, :]
+
+                x_npy = x_npy_skipped.reshape((x_npy_skipped.shape[0], 1, 27, 3))
+                x_npy = np.pad(x_npy, ((0, skipped_max_len - X_len[i_data]), (0, 0), (0, 0), (0, 0)), 'constant',
+                               constant_values=(0, 0))
+                x_key_list.append(np.asarray(x_npy))
+
+                x_list.append(load_npz)
+                # y_list.append(np.asarray(y[i_data]))
+
+                # x_len_list.append(np.asarray(X_len[i_data]))
+
+                label = np.where(y[i_data])[1]
+
+                y_list.append(label)
+
+                # Hardcoded ???
+                x_len_list.append(length)
+                y_len_list.append(np.asarray(Y_len[i_data]))
+
+                Y_zeros_list.append(Y_zeros[i_data])
+
+            # label = np.where(y_list)[2]
+            #
+            # y_test = []
+            #
+            # y_test.append(label)
+
+            # print(label)
+
+            # y_list = tf.keras.preprocessing.sequence.pad_sequences(
+            #     y_list, padding="post"
+            # )
+            # print(np.array(x_list).shape)
+            # print(np.array(x_key_list).shape)
+            # print(np.array(x_len_list).shape)
+
+            # x_list = np.array(x_list).reshape((1, np.array(x_list).shape[0],  np.array(x_list).shape[1],  np.array(x_list).shape[2],  np.array(x_list).shape[3]))
+            # x_key_list = np.array(x_key_list).reshape((1, np.array(x_key_list).shape[0],  np.array().shape[1],  np.array(x_key_list).shape[2],  np.array(x_key_list).shape[3]))
+            # x_len_list = np.array(x_len_list).reshape((1, np.array(x_len_list).shape[0]))
+
+            predict = network.predict_on_batch(
+                x=[np.concatenate((np.array(x_list), np.array(x_list)), axis=0), np.concatenate((np.array(x_key_list), np.array(x_key_list)), axis=0), np.concatenate((np.array(x_len_list), np.array(x_len_list)), axis=0)])
+
+            y_new = np.concatenate((np.array(y_list), np.array(y_list)), axis=0)
+
+            # print(predict[0])
+            # print(y_new[0])
+            #
+            # print(predict)
+            # print(y_new)
+            #
+            # print(len(y_list[0]))
+
+            wer = calculate_wer(gt=y_new, result=predict, length=len(y_list[0]))
+            wers.append(wer)
+
+        wers_avg = np.average(wers)
+        error_model.append(wers_avg)
+        print('#########')
+        print(f'WER AVG / EPOCH {epoch + 1} : {wers_avg}')
+        print('#########')
+
         network.save_model(f'{MODEL_SAVE_PATH}/')
 
-        loaded = CTCModel(None, None)
-        loaded.load_model(r'F:\Dataset\Sign Language\CSL Model + Keypoint\\', optimizer=Adam(lr=0.00001), init_archi=False)
-
-        # loaded.model
-
-        loaded.summary()
+        # loaded.load_model(r'F:\Dataset\Sign Language\CSL Model + Keypoint\\', optimizer=Adam(lr=0.00001), init_archi=False)
+        # loaded.summary()
 
         # print(f'Loss : {np.average(np.array(loss))}, Accuracy : {np.average(np.array(acc))}')
         # acc_model.append(np.average(np.array(acc)))
@@ -426,10 +609,14 @@ def train_ctc(shuffle=True):
     print(acc_model)
     print(loss_model)
 
-    print('train')
+    error_avg = np.average(error_model)
+    print('#########')
+    print(f'model WER : {error_avg}')
+    print('######### xoxo #########')
+    print('train done')
 
 
-def generate_data(class_count=2):
+def generate_data(class_count=10):
     sentences = {0: ['他的', '同学', '是', '警察'], 1: ['他', '妈妈', '的', '同学', '是', '公务', '员'], 2: ['我的', '爸爸', '是', '商人'],
                  3: ['他', '哥哥', '的', '目标', '是', '解放', '军'], 4: ['他', '姐姐', '的', '目标', '是', '模特'],
                  5: ['我', '朋友', '的', '祖父', '是', '工人'], 6: ['我', '同学', '的', '妈妈', '是', '保姆'],
@@ -472,11 +659,22 @@ def generate_data(class_count=2):
     classes_col = []
     paths_col = []
     path = OUTPUT_PATH
+    keypoint_path = KEYPOINT_PATH
+    keypoint_col = []
+
     for c in classes:
         paths = os.listdir('{}/{}/'.format(path, str(c).zfill(6)))
         paths = list(map(lambda x: '{}/{}/{}'.format(path, str(c).zfill(6), x), paths))
+        keypoint_paths = list(map(lambda x: '{}/{}/{}'.format(keypoint_path, str(c).zfill(6), x[43:-4] + '.avi.npy'), paths))
+        # TESTING #
+        # keypoint_paths = list(map(lambda x: '{}/{}/{}'.format(keypoint_path, str(c).zfill(6), x[48:-4] + '.avi.npy'), paths))
+        # keypoint_paths = list(map(lambda x: '{}/{}/{}'.format(keypoint_path, str(c).zfill(6), x[50:-4] + '.avi.npy'), paths))
+        print(paths)
+        print(keypoint_paths)
+        # exit()
         classes_col += [c for i in range(len(paths))]
         paths_col += paths
+        keypoint_col += keypoint_paths
 
     print(classes_col[0])
     print(paths_col[0])
@@ -489,14 +687,21 @@ def generate_data(class_count=2):
         # print(loaded['arr_0'].shape)
         # print(r'F:\Dataset\Sign Language\CSL\pytorch\color/' + vid[-29:-3] + 'avi')
         cap = cv2.VideoCapture(r'F:\Dataset\Sign Language\CSL\pytorch\color/' + vid[-29:-3] + 'avi')
+        # TESTING #
+        # cap = cv2.VideoCapture(r'F:\Dataset\Sign Language\CSL\pytorch\color/' + vid[-30:-3] + 'avi')
+        # print(r'F:\Dataset\Sign Language\CSL\pytorch\color/' + vid[-30:-3] + 'avi')
+        # exit()
         length = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-        input_len.append(length)
+        input_len.append(math.ceil(length/2))
         if length > max_vid_len:
             max_vid_len = length
         # print(length)
 
     print(input_len)
     print(max_vid_len)
+
+    skipped_max_vid_len = math.ceil(max_vid_len/2)
+    print(skipped_max_vid_len)
 
     # y_data = tf.keras.utils.to_categorical(classes_col, num_classes=5)
 
@@ -518,10 +723,13 @@ def generate_data(class_count=2):
     # target_tokens += ['#START', '#END']
     num_classes = len(target_tokens)
     sentences_array = list(map(lambda x: x[1], sentences.items()))
+    max_sentence = len(max(sentences_array, key=lambda x: len(x)))
     max_sentence = len(max(sentences_array, key=lambda x: len(x))) + 2
     le = LabelEncoder()
     le.fit(target_tokens)
     len(target_tokens)
+
+    print(num_classes)
 
     # sentences_y = y_df.apply(lambda x: ['#START'] + x + ['#END'])
     sentences_y = y_df.apply(lambda x: x)
@@ -566,8 +774,9 @@ def generate_data(class_count=2):
     from sklearn.model_selection import train_test_split
     sentences_x_train, sentences_x_validation, decoder_input_train, \
     decoder_input_val, decoder_target_train, decoder_target_val, \
-    sentences_y_train, sentences_y_validation, label_len_train, label_len_val, input_len_train, input_len_val \
-        = train_test_split(x_df, decoder_input_data, decoder_target_data, sentences_y, label_len, input_len,
+    sentences_y_train, sentences_y_validation, label_len_train, label_len_val, input_len_train, input_len_val, \
+    keypoint_x_train, keypoint_x_validation \
+        = train_test_split(x_df, decoder_input_data, decoder_target_data, sentences_y, label_len, input_len, keypoint_col,
                            test_size=0.2)
     print('last')
     print(sentences_x_train)
@@ -578,13 +787,35 @@ def generate_data(class_count=2):
     # print(decoder_target_train[0])
 
     return np.asarray(sentences_x_train), decoder_input_train, input_len_train, label_len_train, \
-           np.asarray(sentences_x_validation), decoder_input_val, input_len_val, label_len_val, max_vid_len
+           np.asarray(sentences_x_validation), decoder_input_val, input_len_val, label_len_val, keypoint_x_train, keypoint_x_validation,\
+           max_vid_len, num_classes, skipped_max_vid_len
 
+
+def verify_npz():
+    folders = [f.path for f in os.scandir(OUTPUT_PATH) if f.is_dir()]
+
+    print(folders)
+
+    for sentence in range(SENTENCE_START, SENTENCE_END):
+        # print(f'{CSL_PATH}\{str(sentence).zfill(6)}')
+        print(folders[sentence])
+
+        files = [f for f in listdir(folders[sentence]) if isfile(join(folders[sentence], f))]
+
+        for file in files:
+            filename = fr'{folders[sentence]}\{file}'
+            print(filename)
+            x_npz = np.load(filename, mmap_mode='r')
+
+            print(x_npz['arr_0'])
+
+            gc.collect()
 
 # Press the green button in the gutter to run the script.
 if __name__ == '__main__':
     # load_data() # crop + output 4th layer
     # generate_data()
     train_ctc()
+    # verify_npz()
 
 # See PyCharm help at https://www.jetbrains.com/help/pycharm/

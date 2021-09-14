@@ -1285,17 +1285,18 @@ class CustomCallback(keras.callbacks.Callback):
         )
 
 
-def calculate_wer(gt=None, result=None):
+def calculate_wer(gt=None, result=None, length=5):
     if result is None:
         result = [
-            [2, 1, - 1., - 1., - 1., - 1., - 1.],
-            [2, 1, - 1., - 1., - 1., - 1., - 1.]
+            [1, 1, 1, 4],
+            [1, 1, 1, 4]
         ]
     if gt is None:
         gt = [[1, 2, 3, 4, 5], [1, 2, 3, 4, 5]]
 
-    gt2 = np.array(gt).astype(str)[:, 0:5]
-    hp2 = np.array(result).astype(int).astype(str)[:, 0:5]
+    gt2 = np.array(gt).astype(str)[:, 0:length]
+    hp2 = np.array(result).astype(int).astype(str)[:, 0:length]
+    # hp2 = np.array(result[0]).astype(int).astype(str)[:, 0:length]
 
     # print(gt2)
     # print(hp2)
@@ -1318,7 +1319,9 @@ def calculate_wer(gt=None, result=None):
 
     error = wer(gt3, hp3)
 
-    print("Word Error rate = " + str(error))
+    # print("Word Error rate = " + str(error))
+
+    return error
 
 
 def demo_testing(test_sentence, subject_num=None, sample_num=None):
@@ -1418,7 +1421,7 @@ if __name__ == '__main__':
     CTC Full Frame
     '''
     # train_ctc()
-    train_ctc_fit(True)
+    # train_ctc_fit(True)
     # predict_ctc()
 
     # demo_testing([1, 2, 3, 4, 5])
@@ -1445,7 +1448,7 @@ if __name__ == '__main__':
     # print(y)
     # [12, 50, 23, 48, 44]
 
-    # calculate_wer()
+    calculate_wer()
 
     # x_data, y_data = generate_data_list()
     # get_value(x_data)
