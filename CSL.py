@@ -483,15 +483,15 @@ def train_ctc(shuffle=True):
         # Validate dataset
         # for i in range(0, len(x_data_keypoint_validate) // batch_size):
         for i in range(0, len(x_data_keypoint_validate) // 1):
-            X = x_data_val[i * batch_size:min(len(x_data_val), (i + 1) * batch_size)]
-            y = y_data_val[i * batch_size:min(len(y_data_val), (i + 1) * batch_size)]
+            X = x_data_val[i * 1:min(len(x_data_val), (i + 1) * 1)]
+            y = y_data_val[i * 1:min(len(y_data_val), (i + 1) * 1)]
 
-            X_len = x_len_val[i * batch_size:min(len(x_len_val), (i + 1) * batch_size)]
-            Y_len = y_len_val[i * batch_size:min(len(y_len_val), (i + 1) * batch_size)]
+            X_len = x_len_val[i * 1:min(len(x_len_val), (i + 1) * 1)]
+            Y_len = y_len_val[i * 1:min(len(y_len_val), (i + 1) * 1)]
 
-            Y_zeros = y_zeros_validate[i * batch_size:min(len(y_zeros_validate), (i + 1) * batch_size)]
+            Y_zeros = y_zeros_validate[i * 1:min(len(y_zeros_validate), (i + 1) * 1)]
             X_keypoint = x_data_keypoint_validate[
-                         i * batch_size:min(len(x_data_keypoint_validate), (i + 1) * batch_size)]
+                         i * 1:min(len(x_data_keypoint_validate), (i + 1) * 1)]
 
             x_list = []
             y_list = []
@@ -583,7 +583,7 @@ def train_ctc(shuffle=True):
             wers.append(wer)
 
             values = [('wer', wer)]
-            pb_val.add(batch_size, values=values)
+            pb_val.add(1, values=values)
 
         wers_avg = np.average(wers)
         error_model.append(wers_avg)

@@ -153,4 +153,6 @@ fabric.properties
 model
 cropped_video
 
-WLASL/dataset
+WLASL/dataset/*
+
+*.mp4
