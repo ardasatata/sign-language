@@ -478,7 +478,7 @@ def train_ctc(shuffle=True):
             # print(f'Loss : {X[0]}')
             # print(X)
 
-        pb_val = Progbar(len(x_data), stateful_metrics=['wer'])
+        pb_val = Progbar(len(x_data_keypoint_validate), stateful_metrics=['wer'])
 
         # Validate dataset
         # for i in range(0, len(x_data_keypoint_validate) // batch_size):
