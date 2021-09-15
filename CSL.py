@@ -15,6 +15,8 @@ import csv
 
 import re
 
+import imageio
+
 import progressbar
 import tensorflow as tf
 from keras.preprocessing import sequence
@@ -43,21 +45,13 @@ from tqdm import tqdm
 
 CSL_PATH = r'F:\Dataset\Sign Language\CSL\pytorch\color'
 
-# OUTPUT_PATH = r'F:\Dataset\Sign Language\CSL-Output'
-OUTPUT_PATH = r'D:\Dataset\Sign Language\CSL-Output'
-# OUTPUT_PATH = r'F:\Dataset\Sign Language\CSL-Output-ResNet'
-KEYPOINT_PATH = r'F:\Dataset\Sign Language\CSL-Key'
-# MODEL_SAVE_PATH = r"F:\Dataset\Sign Language\CSL Model + Keypoint"
-MODEL_SAVE_PATH = r"F:\Dataset\Sign Language\CSL Model + Keypoint Resnet"
-CLASS_COUNT = 99
-
-# TESTING #
-# KEYPOINT_PATH = r'F:\Dataset\Sign Language\CSL-Key_test'
-# OUTPUT_PATH = r'F:\Dataset\Sign Language\CSL-Output_test'
-# MODEL_SAVE_PATH = r"F:\Dataset\Sign Language\CSL Model + Keypoint - Test"
-# CLASS_COUNT = 2
-
-
+# # OUTPUT_PATH = r'F:\Dataset\Sign Language\CSL-Output'
+# OUTPUT_PATH = r'D:\Dataset\Sign Language\CSL-Output'
+# # OUTPUT_PATH = r'F:\Dataset\Sign Language\CSL-Output-ResNet'
+# KEYPOINT_PATH = r'F:\Dataset\Sign Language\CSL-Key'
+# # MODEL_SAVE_PATH = r"F:\Dataset\Sign Language\CSL Model + Keypoint"
+# MODEL_SAVE_PATH = r"F:\Dataset\Sign Language\CSL Model + Keypoint Resnet"
+# CLASS_COUNT = 100
 
 SENTENCE_START = 75
 SENTENCE_END = 100
@@ -66,6 +60,14 @@ SAMPLE_PER_SENTENCE = 250
 
 PREVIEW = False
 DEBUG = False
+
+# TESTING #
+KEYPOINT_PATH = r'F:\Dataset\Sign Language\CSL-Key_test'
+OUTPUT_PATH = r'F:\Dataset\Sign Language\CSL-Output_test'
+MODEL_SAVE_PATH = r"F:\Dataset\Sign Language\CSL Model + Keypoint - Test"
+CLASS_COUNT = 2
+TESTING = True
+DEBUG = True
 
 selected_joints = {
     '59': np.concatenate((np.arange(0, 17), np.arange(91, 133)), axis=0),  # 59
@@ -251,8 +253,8 @@ def TCN_layer(input_layer, kernel):
 
 
 def train_ctc(shuffle=True):
-    x_data, y_data, x_len, y_len, x_data_val, y_data_val, x_len_val, y_len_val, x_data_keypoint, x_data_keypoint_validate, max_len, num_classes, skipped_max_len = generate_data(class_count=CLASS_COUNT)
-
+    x_data, y_data, x_len, y_len, x_data_val, y_data_val, x_len_val, y_len_val, x_data_keypoint, x_data_keypoint_validate, max_len, num_classes, skipped_max_len = generate_data(
+        class_count=CLASS_COUNT)
 
     # if shuffle:
     #     c = list(zip(x_data, y_data))
@@ -351,7 +353,7 @@ def train_ctc(shuffle=True):
     print(np.asarray(x_data).shape)
     print(np.asarray(y_data).shape)
 
-    batch_size = 1
+    batch_size = 4
     epochs = 20
 
     loss_ = 999999999
@@ -392,7 +394,7 @@ def train_ctc(shuffle=True):
             x_key_list = []
 
             # TODO Get value from network softmax Layer
-            length = 79
+            length = 28
 
             # print(f'\nLoad data {epoch} / batch {i}')
             for i_data in range(0, len(X)):
@@ -400,8 +402,10 @@ def train_ctc(shuffle=True):
 
                 load_npz = np.load(X[i_data][0])
 
-                print(X[i_data][0])
-                print(X_keypoint[i_data])
+                if DEBUG:
+                    print(X[i_data][0])
+                    print(X_keypoint[i_data])
+                    print(X_len[i_data])
 
                 # print(np.array(load_npz['arr_0']).shape)
                 # print(np.array(load_npz['arr_0'][::2, :, :, :]).shape)
@@ -416,8 +420,9 @@ def train_ctc(shuffle=True):
 
                 x_npy_skipped = x_npy[::2, :, :]
 
-                x_npy = x_npy_skipped.reshape((x_npy_skipped.shape[0],1,27,3))
-                x_npy = np.pad(x_npy, ((0, skipped_max_len - X_len[i_data]), (0, 0), (0, 0), (0, 0)), 'constant', constant_values=(0, 0))
+                x_npy = x_npy_skipped.reshape((x_npy_skipped.shape[0], 1, 27, 3))
+                x_npy = np.pad(x_npy, ((0, skipped_max_len - X_len[i_data]), (0, 0), (0, 0), (0, 0)), 'constant',
+                               constant_values=(0, 0))
                 x_key_list.append(np.asarray(x_npy))
 
                 x_list.append(load_npz)
@@ -435,6 +440,10 @@ def train_ctc(shuffle=True):
 
                 Y_zeros_list.append(Y_zeros[i_data])
 
+                if DEBUG:
+                    print(x_npy.shape)
+                    print(load_npz.shape)
+
             # label = np.where(y_list)[2]
             #
             # y_test = []
@@ -447,7 +456,8 @@ def train_ctc(shuffle=True):
                 y_list, padding="post"
             )
 
-            input = [np.array(x_list), np.array(x_key_list), np.array(y_list), np.array(x_len_list), np.array(y_len_list)]
+            input = [np.array(x_list), np.array(x_key_list), np.array(y_list), np.array(x_len_list),
+                     np.array(y_len_list)]
 
             history = network.train_on_batch(
                 x=input,
@@ -468,8 +478,11 @@ def train_ctc(shuffle=True):
             # print(f'Loss : {X[0]}')
             # print(X)
 
+        pb_val = Progbar(len(x_data), stateful_metrics=['wer'])
+
         # Validate dataset
-        for i in range(0, len(x_data_keypoint_validate) // batch_size):
+        # for i in range(0, len(x_data_keypoint_validate) // batch_size):
+        for i in range(0, len(x_data_keypoint_validate) // 1):
             X = x_data_val[i * batch_size:min(len(x_data_val), (i + 1) * batch_size)]
             y = y_data_val[i * batch_size:min(len(y_data_val), (i + 1) * batch_size)]
 
@@ -477,7 +490,8 @@ def train_ctc(shuffle=True):
             Y_len = y_len_val[i * batch_size:min(len(y_len_val), (i + 1) * batch_size)]
 
             Y_zeros = y_zeros_validate[i * batch_size:min(len(y_zeros_validate), (i + 1) * batch_size)]
-            X_keypoint = x_data_keypoint_validate[i * batch_size:min(len(x_data_keypoint_validate), (i + 1) * batch_size)]
+            X_keypoint = x_data_keypoint_validate[
+                         i * batch_size:min(len(x_data_keypoint_validate), (i + 1) * batch_size)]
 
             x_list = []
             y_list = []
@@ -544,9 +558,13 @@ def train_ctc(shuffle=True):
             # x_len_list = np.array(x_len_list).reshape((1, np.array(x_len_list).shape[0]))
 
             predict = network.predict_on_batch(
-                x=[np.concatenate((np.array(x_list), np.array(x_list)), axis=0), np.concatenate((np.array(x_key_list), np.array(x_key_list)), axis=0), np.concatenate((np.array(x_len_list), np.array(x_len_list)), axis=0)])
-
+                x=[np.concatenate((np.array(x_list), np.array(x_list)), axis=0),
+                   np.concatenate((np.array(x_key_list), np.array(x_key_list)), axis=0),
+                   np.concatenate((np.array(x_len_list), np.array(x_len_list)), axis=0)])
             y_new = np.concatenate((np.array(y_list), np.array(y_list)), axis=0)
+
+            # predict = network.predict_on_batch(x=[np.array(x_list), np.array(x_key_list), np.array(x_len_list)])
+            # y_new = np.array(y_list ,dtype=object)
 
             # print(predict[0])
             # print(y_new[0])
@@ -556,8 +574,16 @@ def train_ctc(shuffle=True):
             #
             # print(len(y_list[0]))
 
+            if DEBUG:
+                print(y_new)
+                print(predict)
+                print(len(y_list[0]))
+
             wer = calculate_wer(gt=y_new, result=predict, length=len(y_list[0]))
             wers.append(wer)
+
+            values = [('wer', wer)]
+            pb_val.add(batch_size, values=values)
 
         wers_avg = np.average(wers)
         error_model.append(wers_avg)
@@ -665,43 +691,56 @@ def generate_data(class_count=10):
     for c in classes:
         paths = os.listdir('{}/{}/'.format(path, str(c).zfill(6)))
         paths = list(map(lambda x: '{}/{}/{}'.format(path, str(c).zfill(6), x), paths))
-        keypoint_paths = list(map(lambda x: '{}/{}/{}'.format(keypoint_path, str(c).zfill(6), x[43:-4] + '.avi.npy'), paths))
-        # TESTING #
-        # keypoint_paths = list(map(lambda x: '{}/{}/{}'.format(keypoint_path, str(c).zfill(6), x[48:-4] + '.avi.npy'), paths))
-        # keypoint_paths = list(map(lambda x: '{}/{}/{}'.format(keypoint_path, str(c).zfill(6), x[50:-4] + '.avi.npy'), paths))
-        print(paths)
-        print(keypoint_paths)
-        # exit()
+        keypoint_paths = list(
+            map(lambda x: '{}/{}/{}'.format(keypoint_path, str(c).zfill(6), x[43:-4] + '.avi.npy'), paths))
+        if TESTING:
+            keypoint_paths = list(
+                map(lambda x: '{}/{}/{}'.format(keypoint_path, str(c).zfill(6), x[48:-4] + '.avi.npy'), paths))
+            # keypoint_paths = list(map(lambda x: '{}/{}/{}'.format(keypoint_path, str(c).zfill(6), x[50:-4] + '.avi.npy'), paths))
+        if DEBUG:
+            print(paths)
+            print(keypoint_paths)
+            # exit()
         classes_col += [c for i in range(len(paths))]
         paths_col += paths
         keypoint_col += keypoint_paths
 
-    print(classes_col[0])
-    print(paths_col[0])
+    if DEBUG:
+        print(classes_col[0])
+        print(paths_col[0])
 
     input_len = []
     max_vid_len = 0
 
+    print('Calculate Max frame length')
     for vid in paths_col:
         # loaded = np.load(vid)
         # print(loaded['arr_0'].shape)
         # print(r'F:\Dataset\Sign Language\CSL\pytorch\color/' + vid[-29:-3] + 'avi')
-        cap = cv2.VideoCapture(r'F:\Dataset\Sign Language\CSL\pytorch\color/' + vid[-29:-3] + 'avi')
-        # TESTING #
+
+        path = os.path.normpath(vid)
+        split = path.split(os.sep)
+
+        cap = cv2.VideoCapture(r'F:\Dataset\Sign Language\CSL\pytorch\color/' + split[4] + '/' + split[5][:-3] + 'avi')
+        # if TESTING:
         # cap = cv2.VideoCapture(r'F:\Dataset\Sign Language\CSL\pytorch\color/' + vid[-30:-3] + 'avi')
         # print(r'F:\Dataset\Sign Language\CSL\pytorch\color/' + vid[-30:-3] + 'avi')
         # exit()
         length = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-        input_len.append(math.ceil(length/2))
+        input_len.append(math.ceil(length / 2))
         if length > max_vid_len:
             max_vid_len = length
-        # print(length)
+        if DEBUG:
+            print(length)
+            print(r'F:\Dataset\Sign Language\CSL\pytorch\color/' + split[4] + '/' + split[5][:-3] + 'avi')
+    print('Calculate Max frame length done.')
 
     print(input_len)
     print(max_vid_len)
-
-    skipped_max_vid_len = math.ceil(max_vid_len/2)
+    skipped_max_vid_len = math.ceil(max_vid_len / 2)
     print(skipped_max_vid_len)
+
+    # exit()
 
     # y_data = tf.keras.utils.to_categorical(classes_col, num_classes=5)
 
@@ -727,8 +766,8 @@ def generate_data(class_count=10):
     max_sentence = len(max(sentences_array, key=lambda x: len(x))) + 2
     le = LabelEncoder()
     le.fit(target_tokens)
-    len(target_tokens)
 
+    len(target_tokens)
     print(num_classes)
 
     # sentences_y = y_df.apply(lambda x: ['#START'] + x + ['#END'])
@@ -751,9 +790,10 @@ def generate_data(class_count=10):
     decoder_indexes = dict((classes[i], transformed[i]) for i in range(len(classes)))
     reverse_decoder_indexes = dict((transformed[i], classes[i]) for i in range(len(classes)))
 
-    print(decoder_input_data[0])
-    print(decoder_target_data[0])
-    print(sentences_y[0])
+    if DEBUG:
+        print(decoder_input_data[0])
+        print(decoder_target_data[0])
+        print(sentences_y[0])
 
     print(decoder_indexes)
     # print(reverse_decoder_indexes)
@@ -776,9 +816,10 @@ def generate_data(class_count=10):
     decoder_input_val, decoder_target_train, decoder_target_val, \
     sentences_y_train, sentences_y_validation, label_len_train, label_len_val, input_len_train, input_len_val, \
     keypoint_x_train, keypoint_x_validation \
-        = train_test_split(x_df, decoder_input_data, decoder_target_data, sentences_y, label_len, input_len, keypoint_col,
+        = train_test_split(x_df, decoder_input_data, decoder_target_data, sentences_y, label_len, input_len,
+                           keypoint_col,
                            test_size=0.2)
-    print('last')
+    print('Decoder Train')
     print(sentences_x_train)
     print(decoder_input_train)
     print(label_len_train)
@@ -787,7 +828,8 @@ def generate_data(class_count=10):
     # print(decoder_target_train[0])
 
     return np.asarray(sentences_x_train), decoder_input_train, input_len_train, label_len_train, \
-           np.asarray(sentences_x_validation), decoder_input_val, input_len_val, label_len_val, keypoint_x_train, keypoint_x_validation,\
+           np.asarray(
+               sentences_x_validation), decoder_input_val, input_len_val, label_len_val, keypoint_x_train, keypoint_x_validation, \
            max_vid_len, num_classes, skipped_max_vid_len
 
 
@@ -811,11 +853,30 @@ def verify_npz():
 
             gc.collect()
 
+
+def testing():
+    print('testing')
+    # F:\Dataset\Sign Language\CSL\pytorch\color/00090/P01_s10_00_0._color.avi
+
+    cap = cv2.VideoCapture(r'F:\Dataset\Sign Language\CSL\pytorch\color/000099/P01_s10_00_0._color.avi')
+
+    length = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+    print(length)
+
+    filename = 'F:\Dataset\Sign Language\CSL\pytorch\color/000099/P01_s10_00_0._color.avi'
+    vid = imageio.get_reader(filename, 'ffmpeg')
+    # number of frames in video
+    num_frames = vid._meta['nframes']
+
+    print(num_frames)
+
+
 # Press the green button in the gutter to run the script.
 if __name__ == '__main__':
     # load_data() # crop + output 4th layer
     # generate_data()
     train_ctc()
     # verify_npz()
+    # testing()
 
 # See PyCharm help at https://www.jetbrains.com/help/pycharm/
