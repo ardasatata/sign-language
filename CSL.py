@@ -15,9 +15,9 @@ import csv
 
 import re
 
-import imageio
+# import imageio
 
-import progressbar
+# import progressbar
 import tensorflow as tf
 from keras.preprocessing import sequence
 from tensorflow import keras
@@ -45,13 +45,13 @@ from tqdm import tqdm
 
 CSL_PATH = r'F:\Dataset\Sign Language\CSL\pytorch\color'
 
-# # OUTPUT_PATH = r'F:\Dataset\Sign Language\CSL-Output'
-# OUTPUT_PATH = r'D:\Dataset\Sign Language\CSL-Output'
-# # OUTPUT_PATH = r'F:\Dataset\Sign Language\CSL-Output-ResNet'
-# KEYPOINT_PATH = r'F:\Dataset\Sign Language\CSL-Key'
-# # MODEL_SAVE_PATH = r"F:\Dataset\Sign Language\CSL Model + Keypoint"
+# OUTPUT_PATH = r'F:\Dataset\Sign Language\CSL-Output'
+OUTPUT_PATH = r'F:\Dataset\Sign Language\CSL-Output'
+# OUTPUT_PATH = r'F:\Dataset\Sign Language\CSL-Output-ResNet'
+KEYPOINT_PATH = r'F:\Dataset\Sign Language\CSL-Key'
+MODEL_SAVE_PATH = r"F:\Dataset\Sign Language\CSL Model + Keypoint"
 # MODEL_SAVE_PATH = r"F:\Dataset\Sign Language\CSL Model + Keypoint Resnet"
-# CLASS_COUNT = 100
+CLASS_COUNT = 100
 
 SENTENCE_START = 75
 SENTENCE_END = 100
@@ -60,14 +60,19 @@ SAMPLE_PER_SENTENCE = 250
 
 PREVIEW = False
 DEBUG = False
+TESTING = False
 
-# TESTING #
-KEYPOINT_PATH = r'F:\Dataset\Sign Language\CSL-Key_test'
-OUTPUT_PATH = r'F:\Dataset\Sign Language\CSL-Output_test'
-MODEL_SAVE_PATH = r"F:\Dataset\Sign Language\CSL Model + Keypoint - Test"
-CLASS_COUNT = 2
-TESTING = True
-DEBUG = True
+# # TESTING #
+# KEYPOINT_PATH = r'F:\Dataset\Sign Language\CSL-Key_test'
+# OUTPUT_PATH = r'F:\Dataset\Sign Language\CSL-Output_test'
+# MODEL_SAVE_PATH = r"F:\Dataset\Sign Language\CSL Model + Keypoint - Test"
+# CLASS_COUNT = 2
+# TESTING = True
+# # DEBUG = True
+
+pyshical_devices = tf.config.experimental.list_physical_devices('GPU')
+tf.config.experimental.set_memory_growth(pyshical_devices[0], True)
+tf.config.experimental.set_memory_growth(pyshical_devices[1], True)
 
 selected_joints = {
     '59': np.concatenate((np.arange(0, 17), np.arange(91, 133)), axis=0),  # 59
@@ -344,7 +349,7 @@ def train_ctc(shuffle=True):
 
     print(network.get_model_train())
 
-    network.compile(optimizer=Adam(lr=0.00001))
+    network.compile(optimizer=Adam(lr=0.0001))
 
     network.summary()
 
@@ -353,7 +358,7 @@ def train_ctc(shuffle=True):
     print(np.asarray(x_data).shape)
     print(np.asarray(y_data).shape)
 
-    batch_size = 4
+    batch_size = 2
     epochs = 20
 
     loss_ = 999999999
@@ -479,6 +484,11 @@ def train_ctc(shuffle=True):
             # print(X)
 
         pb_val = Progbar(len(x_data_keypoint_validate), stateful_metrics=['wer'])
+
+        print('')
+        print('')
+        print('Validation')
+        print('')
 
         # Validate dataset
         # for i in range(0, len(x_data_keypoint_validate) // batch_size):
@@ -632,8 +642,8 @@ def train_ctc(shuffle=True):
 
     # network.save_model(path_dir=f'{MODEL_SAVE_PATH}')
 
-    print(acc_model)
-    print(loss_model)
+    # print(acc_model)
+    # print(loss_model)
 
     error_avg = np.average(error_model)
     print('#########')
