@@ -56,7 +56,7 @@ MODEL = r"D:\TSL\.h5"
 MODEL_SAVE_PATH = r'C:\Users\minelab\dev\TSL\model\LSA64\\'
 CTC_MODEL_PATH = r'C:\Users\minelab\dev\TSL\model\LSA64\CTC\\'
 
-DIR = r'D:\LSA64\LSA64_Cropped'
+DIR = r'F:\Arda\LSA64\LSA64_Cropped'
 
 # DIR = r'E:\arda\LSA_64'
 
@@ -65,12 +65,12 @@ NPZ_DIR = r'D:\LSA64\VGG_out_new'
 
 ORIGINAL_VIDEO_PATH = r'D:\LSA64\LSA64_Cropped\\'
 
-START_FROM = 0
-
 # 10 Class with full sample & subject
+START_FROM = 48
 TOTAL_CLASS = 64
-TOTAL_SUBJECT = 8
-TOTAL_SAMPLE = 3
+
+TOTAL_SUBJECT = 10
+TOTAL_SAMPLE = 5
 
 # # Testing
 # TOTAL_CLASS = 2
@@ -86,6 +86,7 @@ EXT = r'mp4'
 MAX_FRAME = 18
 
 EXTRACT_DESTINATION = r'D:\LSA64\VGG_out_new\\'
+EXTRACT_DESTINATION = r'F:\Arda\LSA64\OUTPUT_VGG\\'
 
 EPOCH = 25
 
@@ -1448,10 +1449,10 @@ if __name__ == '__main__':
     # print(y)
     # [12, 50, 23, 48, 44]
 
-    calculate_wer()
+    # calculate_wer()
 
-    # x_data, y_data = generate_data_list()
-    # get_value(x_data)
+    x_data, y_data = generate_data_list()
+    get_value(x_data)
 
     # train_C3D()
 

@@ -74,10 +74,11 @@ def get_value(DIR):
             tf.keras.backend.clear_session()
             gc.collect()
             print(output.shape)
+            print(file[46:-4])
 
             savez_compressed(DEST_DIR + file[46:-4] + '.npz', output)
 
-            # exit(0)
+            exit(0)
 
             cap.release()
 

@@ -45,13 +45,13 @@ from tqdm import tqdm
 
 CSL_PATH = r'F:\Dataset\Sign Language\CSL\pytorch\color'
 
-# # OUTPUT_PATH = r'F:\Dataset\Sign Language\CSL-Output'
-# OUTPUT_PATH = r'D:\Dataset\Sign Language\CSL-Output'
-# # OUTPUT_PATH = r'F:\Dataset\Sign Language\CSL-Output-ResNet'
-# KEYPOINT_PATH = r'F:\Dataset\Sign Language\CSL-Key'
-# # MODEL_SAVE_PATH = r"F:\Dataset\Sign Language\CSL Model + Keypoint"
+# OUTPUT_PATH = r'F:\Dataset\Sign Language\CSL-Output'
+OUTPUT_PATH = r'D:\Dataset\Sign Language\CSL-Output'
+# OUTPUT_PATH = r'F:\Dataset\Sign Language\CSL-Output-ResNet'
+KEYPOINT_PATH = r'F:\Dataset\Sign Language\CSL-Key'
+MODEL_SAVE_PATH = r"F:\Dataset\Sign Language\CSL Model + Keypoint"
 # MODEL_SAVE_PATH = r"F:\Dataset\Sign Language\CSL Model + Keypoint Resnet"
-# CLASS_COUNT = 100
+CLASS_COUNT = 100
 
 SENTENCE_START = 75
 SENTENCE_END = 100
@@ -59,15 +59,16 @@ SENTENCE_END = 100
 SAMPLE_PER_SENTENCE = 250
 
 PREVIEW = False
-DEBUG = False
-
-# TESTING #
-KEYPOINT_PATH = r'F:\Dataset\Sign Language\CSL-Key_test'
-OUTPUT_PATH = r'F:\Dataset\Sign Language\CSL-Output_test'
-MODEL_SAVE_PATH = r"F:\Dataset\Sign Language\CSL Model + Keypoint - Test"
-CLASS_COUNT = 2
-TESTING = True
 DEBUG = True
+TESTING = False
+
+# # TESTING #
+# KEYPOINT_PATH = r'F:\Dataset\Sign Language\CSL-Key_test'
+# OUTPUT_PATH = r'F:\Dataset\Sign Language\CSL-Output_test'
+# MODEL_SAVE_PATH = r"F:\Dataset\Sign Language\CSL Model + Keypoint - Test"
+# CLASS_COUNT = 2
+# TESTING = True
+# # DEBUG = True
 
 selected_joints = {
     '59': np.concatenate((np.arange(0, 17), np.arange(91, 133)), axis=0),  # 59
@@ -353,8 +354,8 @@ def train_ctc(shuffle=True):
     print(np.asarray(x_data).shape)
     print(np.asarray(y_data).shape)
 
-    batch_size = 4
-    epochs = 20
+    batch_size = 2
+    epochs = 2
 
     loss_ = 999999999
 
