@@ -32,6 +32,8 @@ from keras.optimizers import Adam, SGD
 
 from keras_ctcmodel.CTCModel import CTCModel as CTCModel
 
+from keras import backend as K
+
 gpus = tf.config.experimental.list_physical_devices('GPU')
 tf.config.experimental.set_memory_growth(gpus[0], True)
 
@@ -87,7 +89,7 @@ EXTRACT_DESTINATION = r'F:\Arda\LSA64\OUTPUT_VGG\\'
 
 # TRAINING CONFIG
 
-EPOCH = 2
+EPOCH = 25
 BATCH_SIZE = 2
 VALIDATION_BATCH_SIZE = 1
 
@@ -103,6 +105,7 @@ TOTAL_SAMPLE = 5
 PREVIEW = False
 DEBUG = False
 TESTING = False
+LOAD_MODEL = False
 
 OUTPUT_PATH = r'F:\Arda\LSA64\OUTPUT_NEW'
 KEYPOINT_PATH = r'F:\Arda\LSA64\LSA64_Key'
@@ -191,7 +194,7 @@ def generate_data_list():
         y_data,
         x_keypoint,
         input_len,
-        test_size=0.2)
+        test_size=0.2, random_state=2)
 
     print(x_npz_train)
     print(x_npz_val)
@@ -402,8 +405,11 @@ def TCN_layer(input_layer, kernel):
     #    inputs=Input(shape=(28,28))
     # print(input_layer)
     x = ResBlock(input_layer, filters=64, kernel_size=kernel, dilation_rate=1)
+
     x = ResBlock(x, filters=64, kernel_size=kernel, dilation_rate=2)
+
     x = ResBlock(x, filters=64, kernel_size=kernel, dilation_rate=4)
+
     x = ResBlock(x, filters=64, kernel_size=kernel, dilation_rate=8)
     #    x=Flatten()(x)
     return x
@@ -481,19 +487,26 @@ def train_multi():
 
     # Added 2 dense layer
 
-    dense_concat = Dense(1024,  activation='relu')(flatten)
+    dense_concat = Dense(4096)(flatten)
 
-    dense_concat = Dense(256,  activation='relu')(dense_concat)
+    dense_concat = Dense(256)(dense_concat)
 
     dense = Dense(TOTAL_CLASS, activation='softmax')(dense_concat)
 
     network = Model(inputs=[i_vgg, i_keypoint], outputs=dense)
 
+    if LOAD_MODEL:
+        print('Load previous training')
+        network = tf.keras.models.load_model(f'{MODEL_SAVE_PATH}LSA64_acc_0.609375_epoch_20.h5')
+
     network.summary()
 
     metrics = ['accuracy']
 
-    network.compile(optimizer=Adam(lr=0.0001), loss=tf.keras.losses.CategoricalCrossentropy(), metrics=metrics)
+    network.compile(optimizer=Adam(lr=0.0001,
+                                   beta_1=0.96,
+                                   beta_2=0.999
+                                   ), loss=tf.keras.losses.CategoricalCrossentropy(), metrics=metrics)
 
     if DEBUG:
         print(np.asarray(x_data).shape)
@@ -664,6 +677,7 @@ def train_multi():
         print(f'ACC AVG / EPOCH {epoch + 1} : {acc_avg}')
         print('#########')
 
+
         # loaded.load_model(r'F:\Dataset\Sign Language\CSL Model + Keypoint\\', optimizer=Adam(lr=0.00001), init_archi=False)
         # loaded.summary()
 
@@ -713,6 +727,318 @@ def train_multi():
     # print('train done')
 
 
+def train_single():
+    x_data, x_data_val, y_data, y_data_val, x_data_keypoint, x_data_keypoint_validate, x_len, x_len_val, max_len = generate_data_list()
+
+    # Input from intermediate layer
+    i_vgg = tf.keras.Input(name="input_1", shape=(max_len, 56, 56, 256))
+
+    # Input Keypoint
+    i_keypoint = tf.keras.Input(name="input_1_keypoint", shape=(max_len, 1, 27, 3))
+    output_keypoint = TimeDistributed(GlobalAveragePooling2D(name="global_max_full"))(i_keypoint)
+    dense_input_keypoint = Dense(256, activation='relu', name='dense_keypoint')(output_keypoint)
+
+    vgg = VGG_2(i_vgg)
+    # m_vgg = Model(inputs=[i_vgg], outputs=[vgg])
+
+    # TCN
+
+    '''
+    TCN -> Dense
+    '''
+
+    o_tcn_full = TCN_layer(vgg, 5)
+    o_tcn_keypoint = TCN_layer(dense_input_keypoint, 5)
+
+    # global_pool = GlobalAveragePooling2D(name="global_max_full")(o_tcn_full)
+    # flatten = Flatten()(o_tcn_full) # using flatten to sync the network size - disabled if 'TMC FULL'
+
+    dense = Dense(256, name='dense_o_tcn1')(o_tcn_full)
+    dense_keypoint = Dense(256, activation='relu', name='dense_o_keypoint')(o_tcn_keypoint)
+
+    '''
+    TMC (cont)
+    '''
+
+    o_tcn_block1 = TCN_layer(dense, 1)
+    o_tcn_block1 = Dense(256, name='dense_o_tcn_intra_block1')(o_tcn_block1)
+    o_tcn_block1 = Dense(512)(o_tcn_block1)
+    o_tcn_block1 = Dense(512)(o_tcn_block1)
+    block1 = MaxPooling1D(pool_size=5, strides=2)(o_tcn_block1)
+
+    o_tcn_key_block1 = TCN_layer(dense_keypoint, 1)
+    o_tcn_key_block1 = Dense(256, name='dense_o_tcn_key_intra_block1')(o_tcn_key_block1)
+    o_tcn_key_block1 = Dense(256)(o_tcn_key_block1)
+    block1_key = MaxPooling1D(pool_size=5, strides=2)(o_tcn_key_block1)
+
+    i_tcn2 = block1
+    o_tcn2 = TCN_layer(i_tcn2, 5)
+    # flatten2 = Flatten()(o_tcn2) # using flatten to sync the network size
+    dense2 = Dense(256, name='dense_o_tcn2')(o_tcn2)
+    o_tcn_block2 = TCN_layer(dense2, 1)
+    o_tcn_block2 = Dense(512, name='dense_o_tcn_intra_block2')(o_tcn_block2)
+    o_tcn_block2 = Dense(512)(o_tcn_block2)
+    block2 = MaxPooling1D(pool_size=5, strides=2)(o_tcn_block2)
+
+    i_tcn2_key = block1_key
+    o_tcn2_key = TCN_layer(i_tcn2_key, 5)
+    # flatten2 = Flatten()(o_tcn2) # using flatten to sync the network size
+    dense2_key = Dense(256, activation='relu', name='dense_o_tcn2_key')(o_tcn2_key)
+    o_tcn_key_block2 = TCN_layer(dense2_key, 1)
+
+
+
+    o_tcn_key_block2 = Dense(256, name='dense_o_tcn_key_intra_block2')(o_tcn_key_block2)
+    o_tcn_key_block2 = Dense(256)(o_tcn_key_block2)
+    block2_key = MaxPooling1D(pool_size=5, strides=2)(o_tcn_key_block2)
+
+    # Concat VGG + Keypoint
+    concat = concatenate([block2, block2_key], axis=2)
+
+    flatten = Flatten()(block2)  # using flatten to sync the network size - disabled if 'TMC FULL'
+
+    # Added 2 dense layer
+
+    dense_concat = Dense(1024,  activation='relu')(flatten)
+
+    dense_concat = Dense(256,  activation='relu')(dense_concat)
+
+    dense = Dense(TOTAL_CLASS, activation='softmax')(dense_concat)
+
+    network = Model(inputs=[i_vgg], outputs=dense)
+
+    if LOAD_MODEL:
+        print('Load previous training')
+        network = tf.keras.models.load_model(f'{MODEL_SAVE_PATH}LSA64_acc_0.609375_epoch_20.h5')
+
+    network.summary()
+
+    metrics = ['accuracy']
+
+    network.compile(optimizer=Adam(lr=0.0001,
+                                   beta_1=0.96,
+                                   beta_2=0.999
+                                   ), loss=tf.keras.losses.CategoricalCrossentropy(), metrics=metrics)
+
+    if DEBUG:
+        print(np.asarray(x_data).shape)
+        print(np.asarray(x_data_keypoint).shape)
+        print(np.asarray(y_data).shape)
+
+    batch_size = BATCH_SIZE
+    validation_batch_size = VALIDATION_BATCH_SIZE
+    epochs = EPOCH
+
+    loss_ = 999999999
+
+    acc_model = []
+    loss_model = []
+    error_model = []
+
+    metrics_names = ['loss', 'accuracy']
+
+    acc_ = 0
+
+    for epoch in range(0, epochs):
+        print(f'EPOCH : {epoch + 1}')
+
+        acc = []
+        loss = []
+        wers = []
+
+        pb_i = Progbar(len(x_data), stateful_metrics=metrics_names)
+
+        for i in range(0, len(x_data) // batch_size):
+            X = x_data[i * batch_size:min(len(x_data), (i + 1) * batch_size)]
+            y = y_data[i * batch_size:min(len(y_data), (i + 1) * batch_size)]
+
+            X_keypoint = x_data_keypoint[i * batch_size:min(len(x_data_keypoint), (i + 1) * batch_size)]
+
+            X_len = x_len[i * batch_size:min(len(x_len), (i + 1) * batch_size)]
+
+            x_list = []
+            y_list = []
+            x_len_list = []
+            x_key_list = []
+
+            # print(f'\nLoad data {epoch} / batch {i}')
+            for i_data in range(0, len(X)):
+                # x_seq, y_seq = sentence_sequence_generator_npz(X[i_data], y[i_data])
+
+                load_npz = np.load(X[i_data])
+
+                if DEBUG:
+                    print(X[i_data][0])
+                    print(X_keypoint[i_data])
+
+                x_npz = load_npz['arr_0']
+
+                load_npz = np.pad(x_npz, ((0, max_len - X_len[i_data]), (0, 0), (0, 0), (0, 0)), 'constant',
+                                  constant_values=(0, 0))
+
+                x_npy = np.load(X_keypoint[i_data])
+                x_npy = x_npy[:, selected, :]
+
+                x_npy = x_npy.reshape((x_npy.shape[0], 1, 27, 3))
+                x_npy = np.pad(x_npy, ((0, max_len - X_len[i_data]), (0, 0), (0, 0), (0, 0)), 'constant',
+                               constant_values=(0, 0))
+
+                x_key_list.append(np.asarray(x_npy))
+                x_list.append(load_npz)
+
+                y_list.append(y[i_data])
+
+                if DEBUG:
+                    print(x_npy.shape)
+                    print(load_npz.shape)
+
+            if DEBUG:
+                print(np.array(x_list).shape)
+                print(np.array(x_key_list).shape)
+
+            history = network.train_on_batch(x=[np.array(x_list)], y=np.array(y_list))
+
+            # history = network.fit(
+            #     x=[np.array(x_list), np.array(y_list), np.array(x_len_list), np.array(y_len_list)], y=np.array(Y_zeros_list), batch_size=1)
+
+            # print(f'history : {history}')
+
+            values = [('loss', history[0]),('accuracy', history[1])]
+
+            pb_i.add(batch_size, values=values)
+
+            # acc.append(history[1])
+            # loss.append(history[0])
+
+            # print(f'Loss : {X[0]}')
+            # print(X)
+
+        pb_val = Progbar(len(x_data_keypoint_validate), stateful_metrics=metrics_names)
+
+        print('')
+        print('#########')
+        print('Validation')
+        print('#########')
+
+        # Validate dataset
+        # for i in range(0, len(x_data_keypoint_validate) // batch_size):
+        for i in range(0, len(x_data_keypoint_validate) // validation_batch_size):
+            X = x_data_val[i * 1:min(len(x_data_val), (i + 1) * validation_batch_size)]
+            y = y_data_val[i * 1:min(len(y_data_val), (i + 1) * validation_batch_size)]
+
+            X_len = x_len_val[i * 1:min(len(x_len_val), (i + 1) * validation_batch_size)]
+
+            X_keypoint = x_data_keypoint_validate[
+                         i * 1:min(len(x_data_keypoint_validate), (i + 1) * validation_batch_size)]
+
+            x_list = []
+            y_list = []
+
+            x_len_list = []
+            y_len_list = []
+
+            Y_zeros_list = []
+            x_key_list = []
+
+            # print(f'\nLoad data {epoch} / batch {i}')
+            for i_data in range(0, len(X)):
+                # x_seq, y_seq = sentence_sequence_generator_npz(X[i_data], y[i_data])
+
+                load_npz = np.load(X[i_data])
+
+                x_npz = load_npz['arr_0']
+
+                load_npz = np.pad(x_npz, ((0, max_len - X_len[i_data]), (0, 0), (0, 0), (0, 0)), 'constant',
+                                  constant_values=(0, 0))
+
+                x_npy = np.load(X_keypoint[i_data])
+                x_npy = x_npy[:, selected, :]
+
+                x_npy = x_npy.reshape((x_npy.shape[0], 1, 27, 3))
+                x_npy = np.pad(x_npy, ((0, max_len - X_len[i_data]), (0, 0), (0, 0), (0, 0)), 'constant',
+                               constant_values=(0, 0))
+                x_key_list.append(np.asarray(x_npy))
+
+                x_list.append(load_npz)
+
+                y_list.append(y[i_data])
+
+            # print(np.array(x_list).shape)
+            # print(np.array(x_key_list).shape)
+            # print(np.array(y_list).shape)
+            # print(np.array(y_list))
+
+            predict = network.test_on_batch(x=[np.array(x_list)], y=np.array(y_list))
+
+            values = [('loss', predict[0]), ('accuracy', predict[1])]
+
+            acc.append(predict[1])
+            loss.append(predict[0])
+            pb_val.add(validation_batch_size, values=values)
+
+        acc_avg = np.average(acc)
+        loss_avg = np.average(loss)
+
+        if acc_avg > acc_:
+            acc_ = acc_avg
+            network.save(f'{MODEL_SAVE_PATH}/LSA64_acc_{acc_}_epoch_{epoch}.h5')
+
+        print('')
+        print('#########')
+        print(f'LOSS AVG / EPOCH {epoch + 1} : {loss_avg}')
+        print(f'ACC AVG / EPOCH {epoch + 1} : {acc_avg}')
+        print('#########')
+
+
+        # loaded.load_model(r'F:\Dataset\Sign Language\CSL Model + Keypoint\\', optimizer=Adam(lr=0.00001), init_archi=False)
+        # loaded.summary()
+
+        # print(f'Loss : {np.average(np.array(loss))}, Accuracy : {np.average(np.array(acc))}')
+        # acc_model.append(np.average(np.array(acc)))
+        # loss_model.append(np.average(np.array(loss)))
+
+        # if epoch > 1:
+        #     xd, yd, xl, yl = sentence_dataset_generator(sample_number=1)
+        #
+        #     test_data = []
+        #
+        #     for i in range(0, len(SENTENCE_ARRAY)):
+        #         xs, ys = sentence_sequence_generator_npz(xd[i], yd[i])
+        #         test_data.append(xs)
+        #
+        #     # print(np.array(test_data).shape)
+        #
+        #     result = network.predict(x=[np.array(test_data), np.array([5, 5, 5, 5, 5])])
+        #     words = np.where(result != -1)
+        #     print("word", words)
+        #     print(result)
+        #     print(np.asarray(result[0]).shape)
+
+        # if np.average(np.array(loss)) < loss_:
+        #     loss_ = np.average(np.array(loss))
+        #     network.save(
+        #         filepath=f'{MODEL_SAVE_PATH}{"CTC_FULL_LSA64"}_{loss_}.h5')
+
+        # val_loss = []
+        # for i in range(0, len(x_data) // batch_size):
+        #     X = x_data[i * batch_size:min(len(x_data), (i + 1) * batch_size)]
+        #     y = y_data[i * batch_size:min(len(y_data), (i + 1) * batch_size)]
+        #     val_loss.append(tcn_model.validate_on_batch(X, y))
+        #
+        # print('Validation Loss: ' + str(np.mean(val_loss)))
+
+    network.save(f'{MODEL_SAVE_PATH}/LSA64_single_acc_{acc_}_epoch_{epochs}.h5')
+
+    # print(acc_model)
+    # print(loss_model)
+    #
+    # error_avg = np.average(error_model)
+    # print('#########')
+    # print(f'model WER : {error_avg}')
+    # print('######### xoxo #########')
+    # print('train done')
+
+
 if __name__ == '__main__':
     '''
     Classify LSA 64
@@ -722,6 +1048,8 @@ if __name__ == '__main__':
 
     # convert_data()
 
-    train_multi()
+    # train_multi()
+
+    train_single()
 
     # generate_data_list()

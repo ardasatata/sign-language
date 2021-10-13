@@ -62,13 +62,13 @@ PREVIEW = False
 DEBUG = True
 TESTING = False
 
-# # TESTING #
-# KEYPOINT_PATH = r'F:\Dataset\Sign Language\CSL-Key_test'
-# OUTPUT_PATH = r'F:\Dataset\Sign Language\CSL-Output_test'
-# MODEL_SAVE_PATH = r"F:\Dataset\Sign Language\CSL Model + Keypoint - Test"
-# CLASS_COUNT = 2
-# TESTING = True
-# # DEBUG = True
+# TESTING #
+KEYPOINT_PATH = r'F:\Dataset\Sign Language\CSL-Key_test'
+OUTPUT_PATH = r'F:\Dataset\Sign Language\CSL-Output_test'
+MODEL_SAVE_PATH = r"F:\Dataset\Sign Language\CSL Model + Keypoint - Test"
+CLASS_COUNT = 2
+TESTING = True
+# DEBUG = True
 
 selected_joints = {
     '59': np.concatenate((np.arange(0, 17), np.arange(91, 133)), axis=0),  # 59
@@ -249,8 +249,11 @@ def TCN_layer(input_layer, kernel):
     x = ResBlock(x, filters=64, kernel_size=kernel, dilation_rate=2)
     x = ResBlock(x, filters=64, kernel_size=kernel, dilation_rate=4)
     x = ResBlock(x, filters=64, kernel_size=kernel, dilation_rate=8)
+
+    out = tf.keras.layers.MultiHeadAttention(num_heads=4, key_dim=4)(x, x)
     #    x=Flatten()(x)
-    return x
+
+    return out
 
 
 def train_ctc(shuffle=True):
@@ -355,7 +358,7 @@ def train_ctc(shuffle=True):
     print(np.asarray(y_data).shape)
 
     batch_size = 2
-    epochs = 2
+    epochs = 15
 
     loss_ = 999999999
 
