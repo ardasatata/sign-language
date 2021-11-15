@@ -8,7 +8,7 @@ from jiwer import wer
 import gc
 
 # import livelossplot
-import livelossplot as livelossplot
+# import livelossplot as livelossplot
 import tensorflow as tf
 from keras.preprocessing import sequence
 from tensorflow import keras
@@ -26,14 +26,14 @@ from train_custom import VGG, TCN_layer, VGG_2
 
 from keras.models import load_model
 
-from keras.optimizers import Adam, SGD
+from tensorflow.keras.optimizers import Adam, SGD
 
 from keras_ctcmodel.CTCModel import CTCModel as CTCModel
 
 gpus = tf.config.experimental.list_physical_devices('GPU')
-tf.config.experimental.set_memory_growth(gpus[0], True)
+# tf.config.experimental.set_memory_growth(gpus[0], True)
 
-plot_losses = livelossplot.PlotLossesKeras()
+# plot_losses = livelossplot.PlotLossesKeras()
 
 from PIL import Image
 from numpy import savez_compressed
@@ -1321,6 +1321,40 @@ def calculate_wer(gt=None, result=None, length=5):
     error = wer(gt3, hp3)
 
     # print("Word Error rate = " + str(error))
+
+    return error
+
+def calculate_wer(gt=None, result=None, length=5):
+    if result is None:
+        result = [
+            [1, 1, 1, 4],
+            [1, 1, 1, 4]
+        ]
+    if gt is None:
+        gt = [[1, 2, 3, 4, 5], [1, 2, 3, 4, 5]]
+
+    gt2 = np.array(gt).astype(str)[:, 0:length]
+    hp2 = np.array(result).astype(int).astype(str)[:, 0:length]
+    # hp2 = np.array(result[0]).astype(int).astype(str)[:, 0:length]
+
+    # print(gt2)
+    # print(hp2)
+
+    gt3 = []
+    hp3 = []
+
+    for i in gt2:
+        string = (" ".join(i))
+        # print(string)
+        gt3.append(string)
+
+    for i in hp2:
+        string = (" ".join(i))
+        # print(string)
+        hp3.append(string)
+
+
+    error = wer(gt3, hp3)
 
     return error
 

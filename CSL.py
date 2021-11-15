@@ -46,12 +46,12 @@ from tqdm import tqdm
 CSL_PATH = r'F:\Dataset\Sign Language\CSL\pytorch\color'
 
 # OUTPUT_PATH = r'F:\Dataset\Sign Language\CSL-Output'
-OUTPUT_PATH = r'D:\Dataset\Sign Language\CSL-Output'
+OUTPUT_PATH = r'F:\Dataset\Sign Language\CSL-Output'
 # OUTPUT_PATH = r'F:\Dataset\Sign Language\CSL-Output-ResNet'
 KEYPOINT_PATH = r'F:\Dataset\Sign Language\CSL-Key'
 MODEL_SAVE_PATH = r"F:\Dataset\Sign Language\CSL Model + Keypoint"
 # MODEL_SAVE_PATH = r"F:\Dataset\Sign Language\CSL Model + Keypoint Resnet"
-CLASS_COUNT = 100
+CLASS_COUNT = 10
 
 SENTENCE_START = 75
 SENTENCE_END = 100
@@ -59,16 +59,18 @@ SENTENCE_END = 100
 SAMPLE_PER_SENTENCE = 250
 
 PREVIEW = False
-DEBUG = True
+DEBUG = False
 TESTING = False
 
-# TESTING #
-KEYPOINT_PATH = r'F:\Dataset\Sign Language\CSL-Key_test'
-OUTPUT_PATH = r'F:\Dataset\Sign Language\CSL-Output_test'
-MODEL_SAVE_PATH = r"F:\Dataset\Sign Language\CSL Model + Keypoint - Test"
-CLASS_COUNT = 2
-TESTING = True
-# DEBUG = True
+LOAD_WEIGHT = False
+
+# # TESTING #
+# KEYPOINT_PATH = r'F:\Dataset\Sign Language\CSL-Key_test'
+# OUTPUT_PATH = r'F:\Dataset\Sign Language\CSL-Output_test'
+# MODEL_SAVE_PATH = r"F:\Dataset\Sign Language\CSL Model + Keypoint - Test"
+# CLASS_COUNT = 2
+# TESTING = True
+# # DEBUG = True
 
 selected_joints = {
     '59': np.concatenate((np.arange(0, 17), np.arange(91, 133)), axis=0),  # 59
@@ -250,10 +252,10 @@ def TCN_layer(input_layer, kernel):
     x = ResBlock(x, filters=64, kernel_size=kernel, dilation_rate=4)
     x = ResBlock(x, filters=64, kernel_size=kernel, dilation_rate=8)
 
-    out = tf.keras.layers.MultiHeadAttention(num_heads=4, key_dim=4)(x, x)
-    #    x=Flatten()(x)
+    # out = tf.keras.layers.MultiHeadAttention(num_heads=4, key_dim=4)(x, x)
+       # x=Flatten()(x)
 
-    return out
+    return x
 
 
 def train_ctc(shuffle=True):
@@ -315,6 +317,8 @@ def train_ctc(shuffle=True):
     o_tcn_block2 = Dense(512)(o_tcn_block2)
     block2 = MaxPooling1D(pool_size=5, strides=2)(o_tcn_block2)
 
+    block2_attn = tf.keras.layers.MultiHeadAttention(num_heads=4, key_dim=4)(block2, block2)
+
     i_tcn2_key = block1_key
     o_tcn2_key = TCN_layer(i_tcn2_key, 5)
     # flatten2 = Flatten()(o_tcn2) # using flatten to sync the network size
@@ -324,8 +328,12 @@ def train_ctc(shuffle=True):
     o_tcn_key_block2 = Dense(256)(o_tcn_key_block2)
     block2_key = MaxPooling1D(pool_size=5, strides=2)(o_tcn_key_block2)
 
+    block2_key_attn = tf.keras.layers.MultiHeadAttention(num_heads=4, key_dim=4)(block2_key, block2_key)
+
     # Concat VGG + Keypoint
-    concat = concatenate([block2, block2_key], axis=2)
+    concat = concatenate([block2_attn, block2_key_attn], axis=2)
+
+    # concat = concatenate([block2, block2_key], axis=2)
 
     '''
     TMC (cont) # endregion
@@ -347,6 +355,10 @@ def train_ctc(shuffle=True):
     network = CTCModel([i_vgg, i_keypoint], [outrnn])  # -- 4
 
     print(network.get_model_train())
+
+    if LOAD_WEIGHT:
+        network.load_model(path_dir=f'{MODEL_SAVE_PATH}', file_weights='/model_weights.hdf5',
+                           optimizer=Adam(0.00001), init_last_layer=False, init_archi=False)
 
     network.compile(optimizer=Adam(lr=0.00001))
 
@@ -562,8 +574,7 @@ def train_ctc(shuffle=True):
             # x_len_list = np.array(x_len_list).reshape((1, np.array(x_len_list).shape[0]))
 
             predict = network.predict_on_batch(
-                x=[np.concatenate((np.array(x_list), np.array(x_list)), axis=0),
-                   np.concatenate((np.array(x_key_list), np.array(x_key_list)), axis=0),
+                x=[np.concatenate((np.array(x_list), np.array(x_list)), axis=0), np.concatenate((np.array(x_key_list), np.array(x_key_list)), axis=0),
                    np.concatenate((np.array(x_len_list), np.array(x_len_list)), axis=0)])
             y_new = np.concatenate((np.array(y_list), np.array(y_list)), axis=0)
 

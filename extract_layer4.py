@@ -11,7 +11,8 @@ from tensorflow.keras.models import Model
 from keras_preprocessing.image import load_img, img_to_array
 
 gpus = tf.config.experimental.list_physical_devices('GPU')
-tf.config.experimental.set_memory_growth(gpus[0], True)
+# print(gpus)
+# tf.config.experimental.set_memory_growth(gpus[0], True)
 
 from PIL import Image
 from numpy import savez_compressed
