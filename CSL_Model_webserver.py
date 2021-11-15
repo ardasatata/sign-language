@@ -3,7 +3,6 @@ from numpy import savez_compressed
 
 from CSL_demo import predict_ctc, generate_data, predict_ctc_custom
 from urllib.parse import unquote
-import json
 from flask import jsonify
 import cv2
 import threading
@@ -32,12 +31,12 @@ device = cuda.get_current_device()
 PREVIEW = True
 DEBUG = True
 
-TEMP_DIR = r"F:\Dataset\Sign Language\Demo CSL\Temp\\"
-
-DATASET_ROOT = r"F:\Dataset\Sign Language\TSL\\"
-
 CROP_X = 200
 CROP_TOP = 200
+
+# Path Config #
+TEMP_DIR = r"F:\Dataset\Sign Language\Demo CSL\Temp\\"
+DATASET_ROOT = r"F:\Dataset\Sign Language\TSL\\"
 
 app = Flask(__name__)
 CORS(app)
@@ -55,9 +54,6 @@ def index():
 @cross_origin(origin='*')
 def predict():
     filepath = request.args.get('filepath')
-    # F:\\Dataset\\Sign Language\\CSL-Output/000005/P01_s1_05_3._color.npz
-    #  "F:\\Dataset\\Sign Language\\CSL-Output/000005/P01_s1_05_3._color.npz"
-    # print(unquote(filepath).replace('\\\\', '\\'))
     ground_truth, prediction, video_path = '', '', ''
     value = {}
     try:
@@ -240,24 +236,13 @@ def send_video():
     # ground_truth, prediction, video_path = predict_ctc_custom(npz_path="D:\\Dataset\\Sign Language\\CSL-Output/000000/P01_s1_00_0._color.npz",
     #                    npy_path=r"F:\Dataset\Sign Language\CSL-Key\000000\P01_s1_00_0._color.avi.npy", frame_len=106)\
 
-    ground_truth, prediction, video_path = predict_ctc_custom(npz_path=save_file,
-                                                              npy_path=filename[:-4] + '.npy',
-                                                              frame_len=int(math.ceil(length_video[0] / 2))) \
+    ground_truth, prediction, video_path = predict_ctc_custom(npz_path=save_file, npy_path=filename[:-4] + '.npy',
+                                                              frame_len=int(math.ceil(length_video[0] / 2)))
 
     print('PREDICTION FROM MODULE')
     print(prediction)
 
-    # print(ground_truth)
-    # print(video_path)
-
-    # return "video: {0}, ".format(video)
-
     prediction_str = " ".join(map(str, prediction))
-
-    value = {
-        "prediction": prediction_str,
-        "fileName": date_time
-    }
 
     print(prediction_str)
 
@@ -267,6 +252,12 @@ def send_video():
 
     with open(filename, "a", encoding='utf-8') as textfile:
         textfile.write(str(prediction_str))
+
+    value = {
+        "ok": True,
+        "prediction": prediction_str,
+        "fileName": date_time
+    }
 
     return value
 
@@ -304,9 +295,8 @@ def upload_video():
     #
     video.save(video_path)
 
-    # return "video: {0}, ".format(video)
-
     value = {
+        "ok": True,
         "saved_path": video_path,
         "label": label,
         "subject": subject
@@ -329,7 +319,12 @@ def fix_label():
     with open(txt_path, "a", encoding='utf-8') as textfile:
         textfile.write(f"\n{str(label)}")
 
-    return '200'
+    value = {
+        "ok": True,
+        "saved_path": txt_path,
+    }
+
+    return value
 
 
 if __name__ == '__main__':
