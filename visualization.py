@@ -14,6 +14,7 @@ from tf_keras_vis.utils import normalize
 import matplotlib.pyplot as plt
 
 import numpy as np
+import gc
 
 import cv2
 
@@ -87,11 +88,19 @@ def visualize():
 
 def visualize_all():
     # load the model
+    # model = tf.keras.applications.VGG16()
+    #
+    # model.summary()
+
     model = tf.keras.applications.ResNet50V2(weights='imagenet')
+
 
     # model.load_weights(MODEL_NAME, by_name=True)
 
     model.summary()
+
+    exit()
+
     # exit(0)
 
     # redefine model to output right after the first hidden layer

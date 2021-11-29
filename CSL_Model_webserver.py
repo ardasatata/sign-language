@@ -35,8 +35,10 @@ CROP_X = 200
 CROP_TOP = 200
 
 # Path Config #
-TEMP_DIR = r"F:\Dataset\Sign Language\Demo CSL\Temp\\"
-DATASET_ROOT = r"F:\Dataset\Sign Language\TSL\\"
+# TEMP_DIR = r"F:\Dataset\Sign Language\Demo CSL\Temp\\"
+# DATASET_ROOT = r"F:\Dataset\Sign Language\TSL\\"
+PREDICTION_DIR = r"F:\Dataset\TSL\Data Predicted\\"
+DATA_COLLECTION = r"F:\Dataset\TSL\Data Collection\\"
 
 app = Flask(__name__)
 CORS(app)
@@ -74,7 +76,7 @@ def predict():
 @app.route('/file-path')
 def file_path():
     x_data, y_data, x_len, y_len, x_data_keypoint, classes_col, target_data, video_path = generate_data(
-        class_count=100, get_frame_length=False)
+        class_count=10, get_frame_length=False)
 
     print('flask')
     print(x_data)
@@ -144,7 +146,7 @@ def send_video():
     video.filename = date_time + ".mp4"
 
     # Saved Video Path
-    filename = TEMP_DIR + video.filename
+    filename = PREDICTION_DIR + video.filename
 
     print(filename)
 
@@ -158,7 +160,7 @@ def send_video():
     if DEBUG:
         print(video)
 
-    save_file = f'{TEMP_DIR}\{date_time}.npz'
+    save_file = f'{PREDICTION_DIR}\{date_time}.npz'
 
     cap = cv2.VideoCapture(filename)
     length = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
@@ -246,7 +248,7 @@ def send_video():
 
     print(prediction_str)
 
-    filename = f'{TEMP_DIR}\{date_time}.txt'
+    filename = f'{PREDICTION_DIR}\{date_time}.txt'
     if not os.path.isfile(filename):
         open(filename, 'w').close()
 
@@ -273,7 +275,7 @@ def upload_video():
     print(subject)
 
     # respective label directory
-    label_path = DATASET_ROOT + label
+    label_path = DATA_COLLECTION + label
 
     # list all files on the label directory
     onlyfiles = [f for f in listdir(label_path) if isfile(join(label_path, f))]
@@ -314,7 +316,7 @@ def fix_label():
     print(filename)
 
     # respective label directory
-    txt_path = TEMP_DIR + f'{filename}.txt'
+    txt_path = PREDICTION_DIR + f'{filename}.txt'
 
     with open(txt_path, "a", encoding='utf-8') as textfile:
         textfile.write(f"\n{str(label)}")

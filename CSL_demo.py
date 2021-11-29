@@ -46,12 +46,12 @@ from tqdm import tqdm
 CSL_PATH = r'F:\Dataset\Sign Language\CSL\pytorch\color'
 
 # OUTPUT_PATH = r'F:\Dataset\Sign Language\CSL-Output'
-OUTPUT_PATH = r'D:\Dataset\Sign Language\CSL-Output'
+OUTPUT_PATH = r'F:\Dataset\Sign Language\CSL-Output'
 # OUTPUT_PATH = r'F:\Dataset\Sign Language\CSL-Output-ResNet'
 KEYPOINT_PATH = r'F:\Dataset\Sign Language\CSL-Key'
 MODEL_SAVE_PATH = r"F:\Dataset\Sign Language\Demo CSL\Model Testing"
 # MODEL_SAVE_PATH = r"F:\Dataset\Sign Language\CSL Model + Keypoint Resnet"
-CLASS_COUNT = 100
+CLASS_COUNT = 10
 
 SENTENCE_START = 75
 SENTENCE_END = 100
@@ -487,7 +487,7 @@ def predict_ctc(file_path="D:\\Dataset\\Sign Language\\CSL-Output/000000/P01_s1_
     # print(wer)
 
 
-def predict_ctc_custom(npz_path="D:\\Dataset\\Sign Language\\CSL-Output/000000/P01_s1_00_0._color.npz",
+def predict_ctc_custom(npz_path="F:\\Dataset\\Sign Language\\CSL-Output/000000/P01_s1_00_0._color.npz",
                        npy_path=r"F:\Dataset\Sign Language\CSL-Key\000000\P01_s1_00_0._color.avi.npy", frame_len=106):
 
     x_data, y_data, x_len, y_len, x_data_keypoint, classes_col, target_data, video_col = generate_data(
@@ -789,7 +789,8 @@ def generate_data(class_count=10, get_frame_length=True):
     frame_len = np.load(r"F:\Dataset\Sign Language\Demo CSL\frame_len.npy")
     print(frame_len[:2500])
     # Trim 10 class
-    lengths = frame_len
+    # lengths = frame_len
+    lengths = frame_len[:2500]
 
     for vid in lengths:
         if get_frame_length:

@@ -17,7 +17,7 @@ import re
 
 import imageio
 
-import progressbar
+# import progressbar
 import tensorflow as tf
 from keras.preprocessing import sequence
 from tensorflow import keras
@@ -252,10 +252,10 @@ def TCN_layer(input_layer, kernel):
     x = ResBlock(x, filters=64, kernel_size=kernel, dilation_rate=4)
     x = ResBlock(x, filters=64, kernel_size=kernel, dilation_rate=8)
 
-    # out = tf.keras.layers.MultiHeadAttention(num_heads=4, key_dim=4)(x, x)
-       # x=Flatten()(x)
+    out = tf.keras.layers.MultiHeadAttention(num_heads=4, key_dim=4)(x, x)
+    # x = Flatten()(x)
 
-    return x
+    return out
 
 
 def train_ctc(shuffle=True):
@@ -317,7 +317,7 @@ def train_ctc(shuffle=True):
     o_tcn_block2 = Dense(512)(o_tcn_block2)
     block2 = MaxPooling1D(pool_size=5, strides=2)(o_tcn_block2)
 
-    block2_attn = tf.keras.layers.MultiHeadAttention(num_heads=4, key_dim=4)(block2, block2)
+    block2_attn = tf.keras.layers.MultiHeadAttention(num_heads=4, key_dim=4, name="block2_attn")(block2, block2)
 
     i_tcn2_key = block1_key
     o_tcn2_key = TCN_layer(i_tcn2_key, 5)
@@ -328,7 +328,7 @@ def train_ctc(shuffle=True):
     o_tcn_key_block2 = Dense(256)(o_tcn_key_block2)
     block2_key = MaxPooling1D(pool_size=5, strides=2)(o_tcn_key_block2)
 
-    block2_key_attn = tf.keras.layers.MultiHeadAttention(num_heads=4, key_dim=4)(block2_key, block2_key)
+    block2_key_attn = tf.keras.layers.MultiHeadAttention(num_heads=4, key_dim=4, name="block2_key_attn")(block2_key, block2_key)
 
     # Concat VGG + Keypoint
     concat = concatenate([block2_attn, block2_key_attn], axis=2)
@@ -888,9 +888,9 @@ def testing():
 
 # Press the green button in the gutter to run the script.
 if __name__ == '__main__':
-    # load_data() # crop + output 4th layer
+    load_data() # crop + output 4th layer
     # generate_data()
-    train_ctc()
+    # train_ctc()
     # verify_npz()
     # testing()
 

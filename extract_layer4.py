@@ -94,11 +94,11 @@ def get_value(DIR):
 # block3_conv1
 # conv2_block3_preact_relu
 
-def get_output_layer(src=LOAD_IMG, layer_name='block3_conv1'):
+def get_output_layer(src=LOAD_IMG, layer_name='conv5_block3_1_conv'):
     # model = tf.keras.models.load_model(MODEL_NAME)
 
-    # model = tf.keras.applications.ResNet50V2(weights='imagenet')
-    model = tf.keras.applications.VGG16(weights="imagenet")
+    model = tf.keras.applications.ResNet50V2(weights='imagenet')
+    # model = tf.keras.applications.VGG16(weights="imagenet")
 
     model.load_weights(filepath=MODEL_NAME, by_name=True)
 
