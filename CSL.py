@@ -48,13 +48,14 @@ CSL_PATH = r'F:\Dataset\Sign Language\CSL\pytorch\color'
 # OUTPUT_PATH = r'F:\Dataset\Sign Language\CSL-Output'
 OUTPUT_PATH = r'F:\Dataset\Sign Language\CSL-Output'
 # OUTPUT_PATH = r'F:\Dataset\Sign Language\CSL-Output-ResNet'
+OUTPUT_PATH = r'F:\Dataset\Sign Language\CSL-Output-ResNet-conv5_block3_1_conv'
 KEYPOINT_PATH = r'F:\Dataset\Sign Language\CSL-Key'
 MODEL_SAVE_PATH = r"F:\Dataset\Sign Language\CSL Model + Keypoint"
 # MODEL_SAVE_PATH = r"F:\Dataset\Sign Language\CSL Model + Keypoint Resnet"
 CLASS_COUNT = 10
 
-SENTENCE_START = 75
-SENTENCE_END = 100
+SENTENCE_START = 0
+SENTENCE_END = 99
 
 SAMPLE_PER_SENTENCE = 250
 
@@ -888,9 +889,9 @@ def testing():
 
 # Press the green button in the gutter to run the script.
 if __name__ == '__main__':
-    load_data() # crop + output 4th layer
+    # load_data() # crop + output 4th layer
     # generate_data()
-    # train_ctc()
+    train_ctc()
     # verify_npz()
     # testing()
 
