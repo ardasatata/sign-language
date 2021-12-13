@@ -46,9 +46,10 @@ mp_holistic = mp.solutions.holistic
 MODEL = r"C:\Users\minelab\dev\TSL\model\model_3_point_full_data.h5"
 
 MODEL_SAVE_PATH = r'D:\TSL\\'
+MODEL_SAVE_PATH = r'F:\\Dataset\\Sign Language\\Pretrain\\'
 
 DIR = r'G:\TSL\Processed-Dataset\Color-Cropped'
-DIR_CROPPED_KEY = r'G:\TSL\temp\Cropped-Video'
+DIR_CROPPED_KEY = r'D:\TSL\temp\Cropped-Video'
 SAVE_PATH = r'D:\LSA64\LSA64_Cropped\\'
 NPZ_DIR = r'D:\LSA64\LSA64_10Class_VGGOutput'
 
@@ -64,8 +65,8 @@ TOTAL_SAMPLE = 5
 # TOTAL_SUBJECT = 2
 # TOTAL_SAMPLE = 2
 
-RESOLUTION = 112
-OUTPUT = 56
+RESOLUTION = 224
+OUTPUT = 28
 CHANNEL = 3
 
 FILENAME_PADDING = 15
@@ -209,7 +210,8 @@ def construct_data(videos=[''], keypoints=[''], pixel_map=True, flip=True, previ
         print(videos_array.shape)
         print(keypoints_array.shape)
 
-    return videos_array, keypoints_array
+    # Skip frame /2
+    return videos_array[::2, :, :], keypoints_array[::2, :, :]
 
 
 def visualize_dataset(Xdata, Ydata):
@@ -250,7 +252,7 @@ def vgg_mod(inputs):
 
     # # Pixel Map
     x = Conv2D(filters=CHANNEL, kernel_size=(3, 3), padding="same", activation="relu")(x)
-    x = UpSampling2D(size=(2, 2,))(x)
+    # x = UpSampling2D(size=(2, 2,))(x)
 
     # x = UpSampling2D(size=(2, 2,))(x)
     # Conv2D(CHANNEL, kernel_size=4, strides=1, padding='same', activation='tanh')(x)
@@ -259,6 +261,47 @@ def vgg_mod(inputs):
     # x = Flatten()(x)
     # x = Dense(128, activation='relu')(x)
     # x = Dense(50, activation='relu')(x)
+
+    return x
+
+
+def ResNet_Mod(inputs):
+    # x = tf.keras.applications.ResNet50V2(input_shape=(RESOLUTION, RESOLUTION, CHANNEL), weights='imagenet')(inputs)
+
+    # outputs = x.layers[179].output
+
+    # model.summary()
+
+    # # Pixel Map
+    # x = Conv2D(filters=CHANNEL, kernel_size=(3, 3), padding="same", activation="relu")(model.outputs)
+    # x = UpSampling2D(size=(2, 2,))(x)
+
+    # x = UpSampling2D(size=(2, 2,))(x)
+    # Conv2D(CHANNEL, kernel_size=4, strides=1, padding='same', activation='tanh')(x)
+
+    # # Keypoint
+    # x = Flatten()(x)
+    # x = Dense(128, activation='relu')(x)
+    # x = Dense(50, activation='relu')(x)
+
+    resnet = tf.keras.applications.ResNet50V2(input_shape=(RESOLUTION, RESOLUTION, CHANNEL), weights='imagenet', include_top=False)
+
+    input = resnet.input
+    outputs = resnet.layers[179].output
+
+    # model = tf.keras.Model(inputs=input, outputs=outputs)
+
+    # # Pixel Map
+    x = Conv2D(filters=CHANNEL, kernel_size=(3, 3), padding="same", activation="relu")(outputs)
+
+    # x = UpSampling2D(size=(2, 2,))(x)
+
+    # x = UpSampling2D(size=(2, 2,))(x)
+    # Conv2D(CHANNEL, kernel_size=4, strides=1, padding='same', activation='tanh')(x)
+
+    # model = tf.keras.Model(inputs=inputs, outputs=x)
+
+    print(x)
 
     return x
 
@@ -279,11 +322,21 @@ def train():
         # Invalid device or cannot modify virtual devices once initialized.
         pass
 
-    inputs = tf.keras.Input(name="input_1", shape=(RESOLUTION, RESOLUTION, CHANNEL))
-
+    # inputs = tf.keras.Input(name="input_1", shape=(RESOLUTION, RESOLUTION, CHANNEL))
 
     # Contruct Model
-    x = vgg_mod(inputs)
+    # x = vgg_mod(inputs)
+    # x = ResNet_Mod(inputs)
+
+    resnet = tf.keras.applications.ResNet50V2(input_shape=(RESOLUTION, RESOLUTION, CHANNEL), weights='imagenet', include_top=False)
+    inputs = resnet.input
+    outputs = resnet.layers[179].output
+
+    # # Pixel Map
+    x = Conv2D(filters=CHANNEL, kernel_size=(3, 3), padding="same", activation="relu")(outputs)
+    x = UpSampling2D(size=(2, 2,))(x)
+    x = UpSampling2D(size=(2, 2,))(x)
+
     model = tf.keras.Model(inputs=inputs, outputs=x)
     model.summary()
 
@@ -299,7 +352,7 @@ def train():
     print(np.asarray(x_list).shape)
     print(np.asarray(y_list).shape)
 
-    batch_size = 2
+    batch_size = 1
     epochs = EPOCH
 
     loss_ = 999999999
@@ -349,7 +402,7 @@ def train():
         #
         # print('Validation Loss: ' + str(np.mean(val_loss)))
 
-    model.save(filepath=f'{MODEL_SAVE_PATH}jambrol.h5')
+    model.save(filepath=f'{MODEL_SAVE_PATH}resnet_conv5_block3_1_conv.h5')
 
 
 if __name__ == '__main__':
@@ -358,9 +411,16 @@ if __name__ == '__main__':
 
     # train()
 
-    testVideo = [r'G:\TSL\temp\Cropped-Video\P06_s1_00_1.avi', r'G:\TSL\temp\Cropped-Video\P06_s1_00_2.avi']
-    testKeypoint = [r'G:\TSL\temp\Cropped-Video\P06_s1_00_1.txt', r'G:\TSL\temp\Cropped-Video\P06_s1_00_2.txt']
+    # testVideo = [r'G:\TSL\temp\Cropped-Video\P06_s1_00_1.avi', r'G:\TSL\temp\Cropped-Video\P06_s1_00_2.avi']
+    # testKeypoint = [r'G:\TSL\temp\Cropped-Video\P06_s1_00_1.txt', r'G:\TSL\temp\Cropped-Video\P06_s1_00_2.txt']
+    # #
+    # x_data, y_data = construct_data(testVideo, testKeypoint, preview=False, normalized_pixel=False)
+    # #
+    # visualize_dataset(x_data, y_data)
+
+    testVideo = [r'D:\TSL\temp\Cropped-Video\P06_s1_00_1.avi', r'D:\TSL\temp\Cropped-Video\P06_s1_00_2.avi']
+    testKeypoint = [r'D:\TSL\temp\Cropped-Video\P06_s1_00_1.txt', r'D:\TSL\temp\Cropped-Video\P06_s1_00_2.txt']
     #
-    x_data, y_data = construct_data(testVideo, testKeypoint, preview=False, normalized_pixel=False)
+    x_data, y_data = construct_data(testVideo, testKeypoint, preview=True, normalized_pixel=False)
     #
     visualize_dataset(x_data, y_data)

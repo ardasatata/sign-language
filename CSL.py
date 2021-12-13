@@ -50,20 +50,19 @@ OUTPUT_PATH = r'F:\Dataset\Sign Language\CSL-Output'
 # OUTPUT_PATH = r'F:\Dataset\Sign Language\CSL-Output-ResNet'
 OUTPUT_PATH = r'F:\Dataset\Sign Language\CSL-Output-ResNet-conv5_block3_1_conv'
 KEYPOINT_PATH = r'F:\Dataset\Sign Language\CSL-Key'
-MODEL_SAVE_PATH = r"F:\Dataset\Sign Language\CSL Model + Keypoint"
+MODEL_SAVE_PATH = r"F:\Dataset\Sign Language\CSL Model + Keypoint + ResNet-conv5_block3_1_conv"
 # MODEL_SAVE_PATH = r"F:\Dataset\Sign Language\CSL Model + Keypoint Resnet"
-CLASS_COUNT = 10
+CLASS_COUNT = 100
 
-SENTENCE_START = 0
-SENTENCE_END = 99
-
+SENTENCE_START = 70
+SENTENCE_END = 100
 SAMPLE_PER_SENTENCE = 250
 
 PREVIEW = False
 DEBUG = False
 TESTING = False
 
-LOAD_WEIGHT = False
+LOAD_WEIGHT = True
 
 # # TESTING #
 # KEYPOINT_PATH = r'F:\Dataset\Sign Language\CSL-Key_test'
@@ -253,10 +252,10 @@ def TCN_layer(input_layer, kernel):
     x = ResBlock(x, filters=64, kernel_size=kernel, dilation_rate=4)
     x = ResBlock(x, filters=64, kernel_size=kernel, dilation_rate=8)
 
-    out = tf.keras.layers.MultiHeadAttention(num_heads=4, key_dim=4)(x, x)
+    # out = tf.keras.layers.MultiHeadAttention(num_heads=4, key_dim=4)(x, x)
     # x = Flatten()(x)
 
-    return out
+    return x
 
 
 def train_ctc(shuffle=True):
@@ -269,7 +268,7 @@ def train_ctc(shuffle=True):
     #     x_data, y_data = zip(*c)
 
     # Input from intermediate layer
-    i_vgg = tf.keras.Input(name="input_1", shape=(skipped_max_len, 56, 56, 256))
+    i_vgg = tf.keras.Input(name="input_1", shape=(skipped_max_len, 7, 7, 512))
 
     # Input Keypoint
     i_keypoint = tf.keras.Input(name="input_1_keypoint", shape=(skipped_max_len, 1, 27, 3))
@@ -708,10 +707,10 @@ def generate_data(class_count=10):
         paths = os.listdir('{}/{}/'.format(path, str(c).zfill(6)))
         paths = list(map(lambda x: '{}/{}/{}'.format(path, str(c).zfill(6), x), paths))
         keypoint_paths = list(
-            map(lambda x: '{}/{}/{}'.format(keypoint_path, str(c).zfill(6), x[43:-4] + '.avi.npy'), paths))
+            map(lambda x: '{}/{}/{}'.format(keypoint_path, str(c).zfill(6), x[70:-4] + '.avi.npy'), paths))
         if TESTING:
             keypoint_paths = list(
-                map(lambda x: '{}/{}/{}'.format(keypoint_path, str(c).zfill(6), x[48:-4] + '.avi.npy'), paths))
+                map(lambda x: '{}/{}/{}'.format(keypoint_path, str(c).zfill(6), x[68:-4] + '.avi.npy'), paths))
             # keypoint_paths = list(map(lambda x: '{}/{}/{}'.format(keypoint_path, str(c).zfill(6), x[50:-4] + '.avi.npy'), paths))
         if DEBUG:
             print(paths)
@@ -834,7 +833,7 @@ def generate_data(class_count=10):
     keypoint_x_train, keypoint_x_validation \
         = train_test_split(x_df, decoder_input_data, decoder_target_data, sentences_y, label_len, input_len,
                            keypoint_col,
-                           test_size=0.2)
+                           test_size=0.2, random_state=1)
     print('Decoder Train')
     print(sentences_x_train)
     print(decoder_input_train)

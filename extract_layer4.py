@@ -24,6 +24,7 @@ import cv2
 MODEL_NAME = r"C:\Users\minelab\dev\TSL\model\model_3_point_full_data.h5"
 # MODEL_NAME = r"D:\WLASL\model\TMC_VIDEO_WLASL_2000_10.830657319324773.h5"
 # MODEL_NAME = r"D:\WLASL\model\TMC_VIDEO_WLASL_300.h5"
+MODEL_NAME = r"F:\Dataset\Sign Language\Pretrain\resnet_conv5_block3_1_conv.h5"
 
 CLASS_NAME = r'\000009'
 
@@ -97,10 +98,12 @@ def get_value(DIR):
 def get_output_layer(src=LOAD_IMG, layer_name='conv5_block3_1_conv'):
     # model = tf.keras.models.load_model(MODEL_NAME)
 
-    model = tf.keras.applications.ResNet50V2(weights='imagenet')
+    # model = tf.keras.applications.ResNet50V2(weights='imagenet')
     # model = tf.keras.applications.VGG16(weights="imagenet")
 
-    model.load_weights(filepath=MODEL_NAME, by_name=True)
+    # model.load_weights(filepath=MODEL_NAME, by_name=True)
+
+    model = tf.keras.models.load_model(filepath=MODEL_NAME)
 
     # model.summary()
     #
