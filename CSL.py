@@ -360,7 +360,7 @@ def train_ctc(shuffle=True):
         network.load_model(path_dir=f'{MODEL_SAVE_PATH}', file_weights='/model_weights.hdf5',
                            optimizer=Adam(0.00001), init_last_layer=False, init_archi=False)
 
-    network.compile(optimizer=Adam(lr=0.00001))
+    network.compile(optimizer=Adam(lr=0.000005))
 
     network.summary()
 
