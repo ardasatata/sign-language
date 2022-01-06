@@ -15,7 +15,7 @@ import csv
 
 import re
 
-import imageio
+# import imageio
 
 # import progressbar
 import tensorflow as tf
@@ -50,7 +50,7 @@ OUTPUT_PATH = r'F:\Dataset\Sign Language\CSL-Output'
 # OUTPUT_PATH = r'F:\Dataset\Sign Language\CSL-Output-ResNet'
 OUTPUT_PATH = r'F:\Dataset\Sign Language\CSL-Output-ResNet-conv5_block3_1_conv'
 KEYPOINT_PATH = r'F:\Dataset\Sign Language\CSL-Key'
-MODEL_SAVE_PATH = r"F:\Dataset\Sign Language\CSL Model + Keypoint + ResNet-conv5_block3_1_conv"
+MODEL_SAVE_PATH = r"F:\Dataset\Sign Language\CSL Model wo attn + Keypoint + ResNet-conv5_block3_1_conv"
 # MODEL_SAVE_PATH = r"F:\Dataset\Sign Language\CSL Model + Keypoint Resnet"
 CLASS_COUNT = 100
 
@@ -62,7 +62,7 @@ PREVIEW = False
 DEBUG = False
 TESTING = False
 
-LOAD_WEIGHT = True
+LOAD_WEIGHT = False
 
 # # TESTING #
 # KEYPOINT_PATH = r'F:\Dataset\Sign Language\CSL-Key_test'
@@ -245,14 +245,13 @@ def ResBlock(x, filters, kernel_size, dilation_rate):
 
 
 def TCN_layer(input_layer, kernel):
+    # out = tf.keras.layers.MultiHeadAttention(num_heads=4, key_dim=4)(x, x)
     #    inputs=Input(shape=(28,28))
     # print(input_layer)
     x = ResBlock(input_layer, filters=64, kernel_size=kernel, dilation_rate=1)
     x = ResBlock(x, filters=64, kernel_size=kernel, dilation_rate=2)
     x = ResBlock(x, filters=64, kernel_size=kernel, dilation_rate=4)
     x = ResBlock(x, filters=64, kernel_size=kernel, dilation_rate=8)
-
-    # out = tf.keras.layers.MultiHeadAttention(num_heads=4, key_dim=4)(x, x)
     # x = Flatten()(x)
 
     return x
@@ -328,12 +327,12 @@ def train_ctc(shuffle=True):
     o_tcn_key_block2 = Dense(256)(o_tcn_key_block2)
     block2_key = MaxPooling1D(pool_size=5, strides=2)(o_tcn_key_block2)
 
-    block2_key_attn = tf.keras.layers.MultiHeadAttention(num_heads=4, key_dim=4, name="block2_key_attn")(block2_key, block2_key)
+    # block2_key_attn = tf.keras.layers.MultiHeadAttention(num_heads=4, key_dim=4, name="block2_key_attn")(block2_key, block2_key)
 
     # Concat VGG + Keypoint
-    concat = concatenate([block2_attn, block2_key_attn], axis=2)
+    # concat = concatenate([block2_attn, block2_key_attn], axis=2)
 
-    # concat = concatenate([block2, block2_key], axis=2)
+    concat = concatenate([block2, block2_key], axis=2)
 
     '''
     TMC (cont) # endregion
@@ -370,7 +369,7 @@ def train_ctc(shuffle=True):
     print(np.asarray(y_data).shape)
 
     batch_size = 2
-    epochs = 15
+    epochs = 60
 
     loss_ = 999999999
 
