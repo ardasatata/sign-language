@@ -38,6 +38,9 @@ from keras_ctcmodel.CTCModel import CTCModel as CTCModel
 
 from tensorflow.keras.utils import Progbar
 
+from os import listdir
+from os.path import isfile, join
+
 # from natsort import natsorted
 
 multi_scales = [512, 640]
@@ -68,6 +71,10 @@ MODEL_LOAD_PATH = r"D:\Dataset\Sign Language\Phoenix\Load"
 TRAIN_EXTRACT_PATH = r'D:\Dataset\Sign Language\Phoenix\Extract_ResNet-default\train\\'
 DEV_EXTRACT_PATH = r'D:\Dataset\Sign Language\Phoenix\Extract_ResNet-default\dev\\'
 TEST_EXTRACT_PATH = r'D:\Dataset\Sign Language\Phoenix\Extract_ResNet-default\test\\'
+
+DATA_PATH = r'D:\Dataset\Sign Language\Phoenix\phoenix-2014.v3.tar\phoenix2014-release\phoenix-2014-multisigner\features\fullFrame-210x260px\\'
+
+IS_ENDTOEND = True
 
 PREVIEW = False
 DEBUG = False
@@ -118,6 +125,21 @@ def merge_hm(hms_list):
     # print(hm.size(0))
     hm = torch.mean(hms, dim=0)
     return hm
+
+
+def load_img(path):
+    allframes = [path + r'\\' + f for f in listdir(path) if isfile(join(path, f))]
+
+    if DEBUG:
+        print(allframes)
+
+    video_array = []
+    for img in allframes:
+        frame = Image.open(img)
+        resized_image = frame.resize((224, 224))
+        video_array.append(np.array(resized_image))
+
+    return np.array(video_array)
 
 
 def extract_data(config):
@@ -185,9 +207,6 @@ def extract_data(config):
 
     print(x_data)
     print(x_data_path)
-
-    from os import listdir
-    from os.path import isfile, join
 
     PREFIX_FOLDER = r'\\1\\'
 
@@ -503,8 +522,13 @@ def get_label_data(config='dev'):
     sentence_list = df[3].tolist()
 
     for idx, val in enumerate(x_data_path):
-        x_path = f'{extract_path}\{x_data[idx]}.npz'
         x_key_path = f'{keypoint_path}\{x_data[idx]}.npy'
+
+        if IS_ENDTOEND:
+            x_path = f'{DATA_PATH}\{config}\{x_data[idx]}\{"1"}'
+        else:
+            x_path = f'{extract_path}\{x_data[idx]}.npz'
+
 
         x_list.append(x_path)
         x_key_list.append(x_key_path)
@@ -646,12 +670,14 @@ def SpatialBlock(input):
 
     resnet = tf.keras.applications.ResNet50V2(weights=r'D:\Dataset\Sign Language\ResNet\resnet50v2_weights_tf_dim_ordering_tf_kernels.h5')
 
-    intermediate_layer_model = Model(inputs=resnet.input, outputs=resnet.get_layer('conv5_block3_1_conv').output)
+    intermediate_layer_model = Model(inputs=resnet.input, outputs=resnet.get_layer('conv5_block3_1_conv').output, name='intermediate_resnet')
 
-    model1 = TimeDistributed(intermediate_layer_model)(input)
+    intermediate_layer_model.summary()
+
+    model1 = TimeDistributed(intermediate_layer_model, name='time_distributed_resnet')(input)
 
     model1 = TimeDistributed(
-        Conv2D(filters=256, kernel_size=(3, 3), padding="same", activation="relu", name='block3_conv1'))(input)
+        Conv2D(filters=256, kernel_size=(3, 3), padding="same", activation="relu", name='block3_conv1'))(model1)
     model1 = TimeDistributed(
         Conv2D(filters=256, kernel_size=(3, 3), padding="same", activation="relu", name='block3_conv2'))(model1)
     model1 = TimeDistributed(
@@ -727,20 +753,24 @@ def train_ctc():
     #     x_data, y_data = zip(*c)
 
     # Input from intermediate layer
-    i_vgg = tf.keras.Input(name="input_1", shape=(max_len, 7, 7, 512))
+    i_vgg = tf.keras.Input(name="input_1", shape=(max_len, 224, 224, 3))
+
+    spatialBlock = SpatialBlock(i_vgg)
+
+    attn_spatial = tf.keras.layers.MultiHeadAttention(num_heads=4, key_dim=4, name="spatial_attn")(spatialBlock, spatialBlock)
 
     # Input Keypoint
     i_keypoint = tf.keras.Input(name="input_1_keypoint", shape=(max_len, 1, 27, 3))
     output_keypoint = TimeDistributed(GlobalAveragePooling2D(name="global_max_full"))(i_keypoint)
     dense_input_keypoint = Dense(256, activation='relu', name='dense_keypoint')(output_keypoint)
 
-    vgg = VGG_2(i_vgg)
+    attn_keypoint = tf.keras.layers.MultiHeadAttention(num_heads=4, key_dim=4, name="keypoint_attn")(dense_input_keypoint, dense_input_keypoint)
 
     '''
     TCN -> Dense
     '''
-    o_tcn_full = TCN_layer(vgg, 5)
-    o_tcn_keypoint = TCN_layer(dense_input_keypoint, 5)
+    o_tcn_full = TCN_layer(attn_spatial, 5)
+    o_tcn_keypoint = TCN_layer(attn_keypoint, 5)
 
     dense = Dense(256, name='dense_o_tcn1')(o_tcn_full)
     dense_keypoint = Dense(256, activation='relu', name='dense_o_keypoint')(o_tcn_keypoint)
@@ -863,14 +893,16 @@ def train_ctc():
             for i_data in range(0, len(X)):
                 # x_seq, y_seq = sentence_sequence_generator_npz(X[i_data], y[i_data])
 
-                load_npz = np.load(X[i_data])
+                # load_npz = np.load(X[i_data])
+
+                load_npz = load_img(X[i_data])
 
                 if DEBUG:
                     print(X[i_data])
                     print(X_keypoint[i_data])
                     print(X_len[i_data])
 
-                load_npz = np.pad(load_npz['arr_0'], ((0, max_len - X_len[i_data]), (0, 0), (0, 0), (0, 0)), 'constant',
+                load_npz = np.pad(load_npz, ((0, max_len - X_len[i_data]), (0, 0), (0, 0), (0, 0)), 'constant',
                                   constant_values=(0, 0))
 
                 x_npy = np.load(X_keypoint[i_data])
@@ -947,9 +979,11 @@ def train_ctc():
             for i_data in range(0, len(X)):
                 # x_seq, y_seq = sentence_sequence_generator_npz(X[i_data], y[i_data])
 
-                load_npz = np.load(X[i_data])
+                # load_npz = np.load(X[i_data])
 
-                load_npz = np.pad(load_npz['arr_0'], ((0, max_len - X_len[i_data]), (0, 0), (0, 0), (0, 0)), 'constant',
+                load_npz = load_img(X[i_data])
+
+                load_npz = np.pad(load_npz, ((0, max_len - X_len[i_data]), (0, 0), (0, 0), (0, 0)), 'constant',
                                   constant_values=(0, 0))
 
                 x_npy = np.load(X_keypoint[i_data])
