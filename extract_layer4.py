@@ -96,18 +96,12 @@ def get_value(DIR):
 # conv2_block3_preact_relu
 
 def get_output_layer(src=LOAD_IMG, layer_name='conv5_block3_1_conv'):
-    # model = tf.keras.models.load_model(MODEL_NAME)
+    model = tf.keras.applications.ResNet50V2(weights=r'D:\Dataset\Sign Language\ResNet\resnet50v2_weights_tf_dim_ordering_tf_kernels.h5')
 
-    # model = tf.keras.applications.ResNet50V2(weights='imagenet')
     # model = tf.keras.applications.VGG16(weights="imagenet")
 
     # model.load_weights(filepath=MODEL_NAME, by_name=True)
 
-    model = tf.keras.models.load_model(filepath=MODEL_NAME)
-
-    # model.summary()
-    #
-    # exit()
 
     # img = load_img(img_path, target_size=(224, 224))
 

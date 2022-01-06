@@ -43,16 +43,16 @@ import os
 
 from tqdm import tqdm
 
-CSL_PATH = r'F:\Dataset\Sign Language\CSL\pytorch\color'
+CSL_PATH = r'D:\Dataset\Sign Language\CSL\pytorch\color'
 
 # OUTPUT_PATH = r'F:\Dataset\Sign Language\CSL-Output'
-OUTPUT_PATH = r'F:\Dataset\Sign Language\CSL-Output'
+# OUTPUT_PATH = r'F:\Dataset\Sign Language\CSL-Output'
 # OUTPUT_PATH = r'F:\Dataset\Sign Language\CSL-Output-ResNet'
-OUTPUT_PATH = r'F:\Dataset\Sign Language\CSL-Output-ResNet-conv5_block3_1_conv'
-KEYPOINT_PATH = r'F:\Dataset\Sign Language\CSL-Key'
-MODEL_SAVE_PATH = r"F:\Dataset\Sign Language\CSL Model + Keypoint + ResNet-conv5_block3_1_conv"
+OUTPUT_PATH = r'D:\Dataset\Sign Language\CSL-Output_test'
+KEYPOINT_PATH = r'D:\Dataset\Sign Language\CSL-Key_test'
+MODEL_SAVE_PATH = r"D:\Dataset\Sign Language\CSL Model + Keypoint - Test"
 # MODEL_SAVE_PATH = r"F:\Dataset\Sign Language\CSL Model + Keypoint Resnet"
-CLASS_COUNT = 100
+CLASS_COUNT = 10
 
 SENTENCE_START = 70
 SENTENCE_END = 100
@@ -62,7 +62,7 @@ PREVIEW = False
 DEBUG = False
 TESTING = False
 
-LOAD_WEIGHT = True
+LOAD_WEIGHT = False
 
 # # TESTING #
 # KEYPOINT_PATH = r'F:\Dataset\Sign Language\CSL-Key_test'
@@ -268,10 +268,10 @@ def train_ctc(shuffle=True):
     #     x_data, y_data = zip(*c)
 
     # Input from intermediate layer
-    i_vgg = tf.keras.Input(name="input_1", shape=(skipped_max_len, 7, 7, 512))
+    i_vgg = tf.keras.Input(name="input_1", shape=(100, 56, 56, 256))
 
     # Input Keypoint
-    i_keypoint = tf.keras.Input(name="input_1_keypoint", shape=(skipped_max_len, 1, 27, 3))
+    i_keypoint = tf.keras.Input(name="input_1_keypoint", shape=(100, 1, 27, 3))
     output_keypoint = TimeDistributed(GlobalAveragePooling2D(name="global_max_full"))(i_keypoint)
     dense_input_keypoint = Dense(256, activation='relu', name='dense_keypoint')(output_keypoint)
 
@@ -328,16 +328,16 @@ def train_ctc(shuffle=True):
     o_tcn_key_block2 = Dense(256)(o_tcn_key_block2)
     block2_key = MaxPooling1D(pool_size=5, strides=2)(o_tcn_key_block2)
 
-    block2_key_attn = tf.keras.layers.MultiHeadAttention(num_heads=4, key_dim=4, name="block2_key_attn")(block2_key, block2_key)
+    # block2_key_attn = tf.keras.layers.MultiHeadAttention(num_heads=4, key_dim=4, name="block2_key_attn")(block2_key, block2_key)
 
     # Concat VGG + Keypoint
-    concat = concatenate([block2_attn, block2_key_attn], axis=2)
+    # concat = concatenate([block2_attn, block2_key_attn], axis=2)
 
-    # concat = concatenate([block2, block2_key], axis=2)
+    concat = concatenate([block2, block2_key], axis=2)
 
     '''
     TMC (cont) # endregion
-    
+
     '''
 
     '''
@@ -360,7 +360,7 @@ def train_ctc(shuffle=True):
         network.load_model(path_dir=f'{MODEL_SAVE_PATH}', file_weights='/model_weights.hdf5',
                            optimizer=Adam(0.00001), init_last_layer=False, init_archi=False)
 
-    network.compile(optimizer=Adam(lr=0.000005))
+    network.compile(optimizer=Adam(lr=0.00001))
 
     network.summary()
 
@@ -370,7 +370,7 @@ def train_ctc(shuffle=True):
     print(np.asarray(y_data).shape)
 
     batch_size = 2
-    epochs = 15
+    epochs = 60
 
     loss_ = 999999999
 
@@ -415,6 +415,13 @@ def train_ctc(shuffle=True):
             # print(f'\nLoad data {epoch} / batch {i}')
             for i_data in range(0, len(X)):
                 # x_seq, y_seq = sentence_sequence_generator_npz(X[i_data], y[i_data])
+
+
+                print(np.where(y[i_data])[1])
+                print(length)
+                print(np.asarray(Y_len[i_data]))
+
+                exit()
 
                 load_npz = np.load(X[i_data][0])
 

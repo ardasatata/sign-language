@@ -172,7 +172,7 @@ def plot_pose(img,result,scale=(1.0,1.0)):
     part_line = {}
     kp_preds = result[:, :2]
     kp_scores = result[:, 2]
-    #img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
+    img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
     #print(kp_scores.size())
     # Draw keypoints
     for n in range(kp_scores.shape[0]):
