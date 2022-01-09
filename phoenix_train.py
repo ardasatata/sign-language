@@ -13,18 +13,18 @@ from extract_layer4 import get_output_layer
 from sklearn.preprocessing import LabelEncoder
 import functools
 
-import torch
-import torch.nn.parallel
-import torch.backends.cudnn as cudnn
-import torch.nn.functional as ff
+# import torch
+# import torch.nn.parallel
+# import torch.backends.cudnn as cudnn
+# import torch.nn.functional as ff
 # from pose_hrnet import get_pose_net
-from pose_higher_hrnet import get_pose_net
-# from hrnet_dekr import get_pose_net
-# import coremltools as ct
-from collections import OrderedDict
-# from config import cfg
-from config_higher import cfg
-from config import update_config
+# from pose_higher_hrnet import get_pose_net
+# # from hrnet_dekr import get_pose_net
+# # import coremltools as ct
+# from collections import OrderedDict
+# # from config import cfg
+# from config_higher import cfg
+# from config import update_config
 
 from jiwer import wer
 
@@ -45,34 +45,34 @@ from os.path import isfile, join
 
 multi_scales = [512, 640]
 
-print(torch.__version__)
-print(torch.cuda.is_available())
+# print(torch.__version__)
+# print(torch.cuda.is_available())
 
-CSV_PATH = r"D:\Dataset\Sign Language\Phoenix\phoenix-2014.v3.tar\phoenix2014-release\phoenix-2014-multisigner\annotations\manual"
+CSV_PATH = r"G:\Dataset\Sign Language\Phoenix\phoenix-2014.v3.tar\phoenix2014-release\phoenix-2014-multisigner\annotations\manual"
 TRAIN_CSV = r'\train.corpus.csv'
 DEV_CSV = r'\dev.corpus.csv'
 TEST_CSV = r'\test.corpus.csv'
 
-TRAIN_PATH = r'D:\Dataset\Sign Language\Phoenix\phoenix-2014.v3.tar\phoenix2014-release\phoenix-2014-multisigner\features\fullFrame-210x260px\train\\'
-DEV_PATH = r'D:\Dataset\Sign Language\Phoenix\phoenix-2014.v3.tar\phoenix2014-release\phoenix-2014-multisigner\features\fullFrame-210x260px\dev\\'
-TEST_PATH = r'D:\Dataset\Sign Language\Phoenix\phoenix-2014.v3.tar\phoenix2014-release\phoenix-2014-multisigner\features\fullFrame-210x260px\test\\'
+TRAIN_PATH = r'G:\Dataset\Sign Language\Phoenix\phoenix-2014.v3.tar\phoenix2014-release\phoenix-2014-multisigner\features\fullFrame-210x260px\train\\'
+DEV_PATH = r'G:\Dataset\Sign Language\Phoenix\phoenix-2014.v3.tar\phoenix2014-release\phoenix-2014-multisigner\features\fullFrame-210x260px\dev\\'
+TEST_PATH = r'G:\Dataset\Sign Language\Phoenix\phoenix-2014.v3.tar\phoenix2014-release\phoenix-2014-multisigner\features\fullFrame-210x260px\test\\'
 
 # TRAIN_EXTRACT_PATH = r'D:\Dataset\Sign Language\Phoenix\Extract_ResNet-conv5_block3_1_conv\train\\'
 # DEV_EXTRACT_PATH = r'D:\Dataset\Sign Language\Phoenix\Extract_ResNet-conv5_block3_1_conv\dev\\'
 # TEST_EXTRACT_PATH = r'D:\Dataset\Sign Language\Phoenix\Extract_ResNet-conv5_block3_1_conv\test\\'
 
-TRAIN_KEYPOINT_PATH = r'D:\Dataset\Sign Language\Phoenix\Keypoint\train\\'
-DEV_KEYPOINT_PATH = r'D:\Dataset\Sign Language\Phoenix\Keypoint\dev\\'
-TEST_KEYPOINT_PATH = r'D:\Dataset\Sign Language\Phoenix\Keypoint\test\\'
+TRAIN_KEYPOINT_PATH = r'G:\Dataset\Sign Language\Phoenix\Keypoint\train\\'
+DEV_KEYPOINT_PATH = r'G:\Dataset\Sign Language\Phoenix\Keypoint\dev\\'
+TEST_KEYPOINT_PATH = r'G:\Dataset\Sign Language\Phoenix\Keypoint\test\\'
 
-MODEL_SAVE_PATH = r"D:\Dataset\Sign Language\Phoenix\Saved-Model"
-MODEL_LOAD_PATH = r"D:\Dataset\Sign Language\Phoenix\Load"
+MODEL_SAVE_PATH = r"G:\Dataset\Sign Language\Phoenix\Saved-Model"
+MODEL_LOAD_PATH = r"G:\Dataset\Sign Language\Phoenix\Load"
 
-TRAIN_EXTRACT_PATH = r'D:\Dataset\Sign Language\Phoenix\Extract_ResNet-default\train\\'
-DEV_EXTRACT_PATH = r'D:\Dataset\Sign Language\Phoenix\Extract_ResNet-default\dev\\'
-TEST_EXTRACT_PATH = r'D:\Dataset\Sign Language\Phoenix\Extract_ResNet-default\test\\'
+TRAIN_EXTRACT_PATH = r'G:\Dataset\Sign Language\Phoenix\Extract_ResNet-default\train\\'
+DEV_EXTRACT_PATH = r'G:\Dataset\Sign Language\Phoenix\Extract_ResNet-default\dev\\'
+TEST_EXTRACT_PATH = r'G:\Dataset\Sign Language\Phoenix\Extract_ResNet-default\test\\'
 
-DATA_PATH = r'D:\Dataset\Sign Language\Phoenix\phoenix-2014.v3.tar\phoenix2014-release\phoenix-2014-multisigner\features\fullFrame-210x260px\\'
+DATA_PATH = r'G:\Dataset\Sign Language\Phoenix\phoenix-2014.v3.tar\phoenix2014-release\phoenix-2014-multisigner\features\fullFrame-210x260px\\'
 
 IS_ENDTOEND = True
 
@@ -468,7 +468,7 @@ def get_frame_length(config):
 
 
 def get_all_length():
-    FRAME_LENGTH_PATH = r'D:\Dataset\Sign Language\Phoenix\Frame-length\\'
+    FRAME_LENGTH_PATH = r'G:\Dataset\Sign Language\Phoenix\Frame-length\\'
 
     # np.save(FRAME_LENGTH_PATH + 'dev.npy', np.array(get_frame_length('dev')))
     # np.save(FRAME_LENGTH_PATH + 'test.npy', np.array(get_frame_length('test')))
@@ -668,7 +668,7 @@ def VGG_2(i_vgg):
 
 def SpatialBlock(input):
 
-    resnet = tf.keras.applications.ResNet50V2(weights=r'D:\Dataset\Sign Language\ResNet\resnet50v2_weights_tf_dim_ordering_tf_kernels.h5')
+    resnet = tf.keras.applications.ResNet50V2(weights=r'G:\Dataset\Sign Language\ResNet\resnet50v2_weights_tf_dim_ordering_tf_kernels.h5')
 
     intermediate_layer_model = Model(inputs=resnet.input, outputs=resnet.get_layer('conv5_block3_1_conv').output, name='intermediate_resnet')
 
@@ -814,7 +814,8 @@ def train_ctc():
 
     # concat = concatenate([block2_attn, block2_key_attn], axis=2)
 
-    concat = concatenate([block2, block2_key], axis=2)
+    # concat = concatenate([block2, block2_key], axis=2)
+    concat = block2
 
     '''
     TMC (cont) # endregion
@@ -831,7 +832,7 @@ def train_ctc():
     '''
     Sequence Learning # endregion
     '''
-    network = CTCModel([i_vgg, i_keypoint], [outrnn])  # -- 4
+    network = CTCModel([i_vgg], [outrnn])  # -- 4
 
     print(network.get_model_train())
 
@@ -929,7 +930,7 @@ def train_ctc():
                     print(x_npy.shape)
                     print(load_npz.shape)
 
-            input = [np.array(x_list), np.array(x_key_list), np.array(y_list), np.array(x_len_list),
+            input = [np.array(x_list), np.array(y_list), np.array(x_len_list),
                      np.array(y_len_list)]
 
             history = network.train_on_batch(
@@ -1010,7 +1011,7 @@ def train_ctc():
                 Y_zeros_list.append(Y_zeros[i_data])
 
             predict = network.predict_on_batch(
-                x=[np.concatenate((np.array(x_list), np.array(x_list)), axis=0), np.concatenate((np.array(x_key_list), np.array(x_key_list)), axis=0),
+                x=[np.concatenate((np.array(x_list), np.array(x_list)), axis=0),
                    np.concatenate((np.array(x_len_list), np.array(x_len_list)), axis=0)])
             y_new = np.concatenate((np.array(y_list), np.array(y_list)), axis=0)
 
