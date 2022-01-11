@@ -22,9 +22,9 @@ from pose_higher_hrnet import get_pose_net
 # from hrnet_dekr import get_pose_net
 # import coremltools as ct
 from collections import OrderedDict
-# from config import cfg
-from config_higher import cfg
-from config import update_config
+from config import cfg
+# from config_higher import cfg
+# from config import update_config
 
 from jiwer import wer
 
@@ -40,6 +40,8 @@ from tensorflow.keras.utils import Progbar
 
 from os import listdir
 from os.path import isfile, join
+
+import random
 
 # from natsort import natsorted
 
@@ -74,6 +76,8 @@ TEST_EXTRACT_PATH = r'D:\Dataset\Sign Language\Phoenix\Extract_ResNet-default\te
 
 DATA_PATH = r'D:\Dataset\Sign Language\Phoenix\phoenix-2014.v3.tar\phoenix2014-release\phoenix-2014-multisigner\features\fullFrame-210x260px\\'
 
+MODEL_NAME = r"D:\Dataset\Sign Language\Pretrain\resnet_conv5_block3_1_conv.h5"
+
 IS_ENDTOEND = True
 
 PREVIEW = False
@@ -100,8 +104,8 @@ index_mirror = np.concatenate([
 assert (index_mirror.shape[0] == 133)
 
 selected = np.concatenate(([0, 5, 6, 7, 8, 9, 10],
-                          [91, 95, 96, 99, 100, 103, 104, 107, 108, 111],
-                          [112, 116, 117, 120, 121, 124, 125, 128, 129, 132]), axis=0),  # 27
+                           [91, 95, 96, 99, 100, 103, 104, 107, 108, 111],
+                           [112, 116, 117, 120, 121, 124, 125, 128, 129, 132]), axis=0),  # 27
 
 
 def norm_numpy_totensor(img):
@@ -127,16 +131,35 @@ def merge_hm(hms_list):
     return hm
 
 
+IMG_SIZE = 224
+WIDTH = 210
+HEIGHT = 260
+
+
 def load_img(path):
     allframes = [path + r'\\' + f for f in listdir(path) if isfile(join(path, f))]
 
     if DEBUG:
         print(allframes)
 
+    random_left = random.randint(0, 8)
+    random_right = random.randint(0, 12)
+    random_top = random.randint(0, 12)
+    random_down = random.randint(0, 15)
+
+    left = random_left
+    top = random_top
+    right = WIDTH - random_right
+    bottom = HEIGHT - random_down
+
     video_array = []
     for img in allframes:
         frame = Image.open(img)
-        resized_image = frame.resize((224, 224))
+        cropped = frame.crop((left, top, right, bottom))
+        resized_image = cropped.resize((IMG_SIZE, IMG_SIZE))
+        # resized_image.show()
+        # resized_image.save(r'D:\Dataset\Sign Language\Phoenix\Output\random crop\10.png')
+        # exit()
         video_array.append(np.array(resized_image))
 
     return np.array(video_array)
@@ -182,7 +205,6 @@ def extract_data(config):
             print(count)
 
         count += 1
-
 
     target_tokens = list(
         functools.reduce(lambda a, b: a.union(b), list(map(lambda x: set(x), sentences))))
@@ -298,19 +320,19 @@ def extract_keypoint(config):
     PREFIX_FOLDER = r'\\1\\'
 
     with torch.no_grad():
-        # config = 'wholebody_w48_384x288.yaml'
-        config = 'w48_640_adam_lr1e-3.yaml'
+        config = 'wholebody_w48_384x288.yaml'
+        # config = 'w48_640_adam_lr1e-3.yaml'
         cfg.merge_from_file(config)
 
         newmodel = get_pose_net(cfg, is_train=False)
         # print(newmodel)
 
         checkpoint = torch.load(
-            # r'D:\Dataset\Sign Language\HRnet\hrnet_w48_coco_wholebody_384x288-6e061c6a_20200922.pth')
-            # r'D:\Dataset\Sign Language\HRnet\pose_hrnet_w48_384x288.pth')
-            # r'D:\Dataset\Sign Language\HRnet\pose_dekr_hrnetw48_coco.pth')
-            # 'D:\Dataset\Sign Language\HRnet\pose_higher_hrnet_w32_512.pth')
-            'D:\Dataset\Sign Language\HRnet\higher_hrnet48_coco_wholebody_512x512_plus-934f08aa_20210517.pth')
+            r'D:\Dataset\Sign Language\HRnet\hrnet_w48_coco_wholebody_384x288-6e061c6a_20200922.pth')
+        # r'D:\Dataset\Sign Language\HRnet\pose_hrnet_w48_384x288.pth')
+        # r'D:\Dataset\Sign Language\HRnet\pose_dekr_hrnetw48_coco.pth')
+        # 'D:\Dataset\Sign Language\HRnet\pose_higher_hrnet_w32_512.pth')
+        # 'D:\Dataset\Sign Language\HRnet\higher_hrnet48_coco_wholebody_512x512_plus-934f08aa_20210517.pth')
 
         for key in checkpoint['state_dict']:
             print(key)
@@ -400,9 +422,10 @@ def extract_keypoint(config):
 
                 img = np.asarray(img)
                 for j in range(133):
-                    img = cv2.circle(img, (int(x[j]), int(y[j])), radius=2, color=(255,0,0), thickness=-1)
+                    img = cv2.circle(img, (int(x[j]), int(y[j])), radius=2, color=(255, 0, 0), thickness=-1)
                 img = plot_pose(img, pred)
-                cv2.imwrite(r'D:\Dataset\Sign Language\Phoenix\Output\{}.png'.format(x_data[i]), cv2.cvtColor(img, cv2.COLOR_RGB2BGR))
+                cv2.imwrite(r'D:\Dataset\Sign Language\Phoenix\Output\{}.png'.format(x_data[i]),
+                            cv2.cvtColor(img, cv2.COLOR_RGB2BGR))
                 # writer.write(cv2.cvtColor(img, cv2.COLOR_RGB2BGR))
 
             output_list = np.array(output_list)
@@ -529,7 +552,6 @@ def get_label_data(config='dev'):
         else:
             x_path = f'{extract_path}\{x_data[idx]}.npz'
 
-
         x_list.append(x_path)
         x_key_list.append(x_key_path)
 
@@ -595,7 +617,6 @@ def get_sentence_token():
         print(label_len_test)
         print(label_len_train)
 
-
     # print(le.transform(sentences))
     # print(le.inverse_transform(le.transform(sentence_dev)))
 
@@ -643,10 +664,10 @@ def calculate_wer(gt=None, result=None, length=5):
         # print(string)
         hp3.append(string)
 
-
     error = wer(gt3, hp3)
 
     return error
+
 
 def VGG_2(i_vgg):
     model1 = TimeDistributed(
@@ -666,11 +687,15 @@ def VGG_2(i_vgg):
 
     return model
 
+
 def SpatialBlock(input):
+    # resnet = tf.keras.applications.ResNet50V2(weights=r'D:\Dataset\Sign Language\ResNet\resnet50v2_weights_tf_dim_ordering_tf_kernels.h5')
+    resnet = tf.keras.applications.ResNet50V2(weights=None)
 
-    resnet = tf.keras.applications.ResNet50V2(weights=r'D:\Dataset\Sign Language\ResNet\resnet50v2_weights_tf_dim_ordering_tf_kernels.h5')
+    resnet.load_weights(MODEL_NAME, by_name=True)
 
-    intermediate_layer_model = Model(inputs=resnet.input, outputs=resnet.get_layer('conv5_block3_1_conv').output, name='intermediate_resnet')
+    intermediate_layer_model = Model(inputs=resnet.input, outputs=resnet.get_layer('conv4_block6_1_conv').output,
+                                     name='intermediate_resnet')
 
     intermediate_layer_model.summary()
 
@@ -730,7 +755,6 @@ def train_ctc():
 
     transformed_dev, transformed_test, transformed_train, label_len_dev, label_len_test, label_len_train = get_sentence_token()
 
-
     x_data = x_list
     x_data_keypoint = x_key_list
     y_data = transformed_train
@@ -757,14 +781,16 @@ def train_ctc():
 
     spatialBlock = SpatialBlock(i_vgg)
 
-    attn_spatial = tf.keras.layers.MultiHeadAttention(num_heads=4, key_dim=4, name="spatial_attn")(spatialBlock, spatialBlock)
+    attn_spatial = tf.keras.layers.MultiHeadAttention(num_heads=4, key_dim=4, name="spatial_attn")(spatialBlock,
+                                                                                                   spatialBlock)
 
     # Input Keypoint
     i_keypoint = tf.keras.Input(name="input_1_keypoint", shape=(max_len, 1, 27, 3))
     output_keypoint = TimeDistributed(GlobalAveragePooling2D(name="global_max_full"))(i_keypoint)
     dense_input_keypoint = Dense(256, activation='relu', name='dense_keypoint')(output_keypoint)
 
-    attn_keypoint = tf.keras.layers.MultiHeadAttention(num_heads=4, key_dim=4, name="keypoint_attn")(dense_input_keypoint, dense_input_keypoint)
+    attn_keypoint = tf.keras.layers.MultiHeadAttention(num_heads=4, key_dim=4, name="keypoint_attn")(
+        dense_input_keypoint, dense_input_keypoint)
 
     '''
     TCN -> Dense
@@ -950,7 +976,6 @@ def train_ctc():
             loss_ = loss_avg
             network.save_model(f'{MODEL_SAVE_PATH}/')
 
-
         pb_val = Progbar(len(x_data_keypoint_validate), stateful_metrics=['wer'])
 
         # Validate dataset
@@ -1010,7 +1035,8 @@ def train_ctc():
                 Y_zeros_list.append(Y_zeros[i_data])
 
             predict = network.predict_on_batch(
-                x=[np.concatenate((np.array(x_list), np.array(x_list)), axis=0), np.concatenate((np.array(x_key_list), np.array(x_key_list)), axis=0),
+                x=[np.concatenate((np.array(x_list), np.array(x_list)), axis=0),
+                   np.concatenate((np.array(x_key_list), np.array(x_key_list)), axis=0),
                    np.concatenate((np.array(x_len_list), np.array(x_len_list)), axis=0)])
             y_new = np.concatenate((np.array(y_list), np.array(y_list)), axis=0)
 
@@ -1041,10 +1067,11 @@ def train_ctc():
     print('######### xoxo #########')
     print('train done')
 
+
 # Press the green button in the gutter to run the script.
 if __name__ == '__main__':
     # extract_data('test')
-    # extract_keypoint('train')
+    # extract_keypoint('dev')
     # dev, test, train, padding_x = get_all_length()
     #
     # print(dev)
@@ -1062,5 +1089,8 @@ if __name__ == '__main__':
     # transformed_dev, transformed_test, transformed_train, label_len_dev, label_len_test, label_len_train = get_sentence_token()
 
     train_ctc()
+
+    # load_img(
+    #     r'D:\Dataset\Sign Language\Phoenix\phoenix-2014.v3.tar\phoenix2014-release\phoenix-2014-multisigner\features\fullFrame-210x260px\dev\01April_2010_Thursday_heute_default-1\1')
 
 # See PyCharm help at https://www.jetbrains.com/help/pycharm/

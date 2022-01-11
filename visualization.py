@@ -36,7 +36,7 @@ MODEL_NAME = r"D:\TSL\model-pixel.h5"
 # MODEL_NAME = r"C:\Users\minelab\dev\TSL\model\model_3_point_full_data.h5"
 # MODEL_NAME = r"D:\WLASL\model\TMC_VIDEO_WLASL_100.h5"
 # MODEL_NAME = r"D:\WLASL\model\TMC_VIDEO_WLASL_300.h5"
-MODEL_NAME = r"F:\Dataset\Sign Language\Pretrain\resnet_conv5_block3_1_conv.h5"
+MODEL_NAME = r"D:\Dataset\Sign Language\Pretrain\resnet_conv5_block3_1_conv.h5"
 
 
 def visualize():
@@ -112,7 +112,7 @@ def visualize_all():
     # exit(0)
 
     # redefine model to output right after the first hidden layer
-    ixs = [120]
+    ixs = [149]
     # ixs = [8]
     outputs = [model.layers[i].output for i in ixs]
     model = Model(inputs=model.inputs, outputs=outputs)
@@ -236,7 +236,7 @@ def output():
     cv2.waitKey(10000)
 
 
-IMG_NAME = 'csl10.jpg'
+IMG_NAME = 'phoenix-1.png'
 
 if __name__ == '__main__':
     # visualize()
