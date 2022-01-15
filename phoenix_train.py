@@ -1,3 +1,5 @@
+import sys
+
 import pandas as pd
 import numpy as np
 from PIL import Image, ImageOps
@@ -10,7 +12,8 @@ from tensorflow.python.keras.models import Model
 
 from extract_layer4 import get_output_layer
 
-from sklearn.preprocessing import LabelEncoder
+from sklearn.preprocessing import LabelEncoder, OneHotEncoder
+
 import functools
 
 import torch
@@ -31,7 +34,7 @@ from jiwer import wer
 from utils import pose_process, plot_pose
 
 from tensorflow.python.keras.layers import Conv1D, Add, Activation, Dense, TimeDistributed, Conv2D, \
-    MaxPooling2D, GlobalAveragePooling2D, LSTM, MaxPooling1D, Bidirectional
+    MaxPooling2D, GlobalAveragePooling2D, LSTM, MaxPooling1D, Bidirectional, Flatten
 from tensorflow.python.keras.optimizer_v2.adam import Adam
 from tensorflow.python.keras.backend import concatenate
 from keras_ctcmodel.CTCModel import CTCModel as CTCModel
@@ -42,6 +45,8 @@ from os import listdir
 from os.path import isfile, join
 
 import random
+
+import math
 
 # from natsort import natsorted
 
@@ -77,6 +82,8 @@ TEST_EXTRACT_PATH = r'D:\Dataset\Sign Language\Phoenix\Extract_ResNet-default\te
 DATA_PATH = r'D:\Dataset\Sign Language\Phoenix\phoenix-2014.v3.tar\phoenix2014-release\phoenix-2014-multisigner\features\fullFrame-210x260px\\'
 
 MODEL_NAME = r"D:\Dataset\Sign Language\Pretrain\resnet_conv5_block3_1_conv.h5"
+
+ITERATIVE_OUTPUT = r"D:\Dataset\Sign Language\Phoenix\iterative-model"
 
 IS_ENDTOEND = True
 
@@ -595,6 +602,7 @@ def get_sentence_token():
     le_name_mapping = dict(zip(le.classes_, le.transform(le.classes_)))
 
     print(le_name_mapping)
+    print(list(le_name_mapping))
 
     sentence_dev = list(map(lambda x: str(x).split(), sentence_dev))
     sentence_test = list(map(lambda x: str(x).split(), sentence_test))
@@ -604,9 +612,20 @@ def get_sentence_token():
     transformed_test = list(map(lambda x: le.transform(x), sentence_test))
     transformed_train = list(map(lambda x: le.transform(x), sentence_train))
 
-    label_len_dev = list(map(lambda x: len(str(x).split()), sentence_dev))
+    label_len_dev = list(map(lambda x: len(le.transform(x)), sentence_dev))
     label_len_test = list(map(lambda x: len(le.transform(x)), sentence_test))
     label_len_train = list(map(lambda x: len(le.transform(x)), sentence_train))
+
+    # One Hot
+    onehot_dev = list(map(lambda x: list(map(lambda y: generate_one_hot(y, num_classes), x)), transformed_dev))
+    onehot_test = list(map(lambda x: list(map(lambda y: generate_one_hot(y, num_classes), x)), transformed_test))
+    onehot_train = list(map(lambda x: list(map(lambda y: generate_one_hot(y, num_classes), x)), transformed_train))
+
+    # np.set_printoptions(threshold=sys.maxsize)
+    # print(onehot_dev[0])
+    # print(transformed_dev[0])
+    #
+    # exit()
 
     if DEBUG:
         print(transformed_dev)
@@ -632,7 +651,9 @@ def get_sentence_token():
         transformed_train, padding="post"
     )
 
-    return transformed_dev, transformed_test, transformed_train, label_len_dev, label_len_test, label_len_train
+    return transformed_dev, transformed_test, transformed_train, \
+           label_len_dev, label_len_test, label_len_train, \
+           onehot_dev, onehot_test, onehot_train
 
 
 def calculate_wer(gt=None, result=None, length=5):
@@ -964,7 +985,7 @@ def train_ctc():
 
             values = [('val', history)]
 
-            pb_i.add(batch_size, values=values)
+            pb_i.add(1, values=values)
             loss.append(history)
 
         loss_avg = np.average(loss)
@@ -1068,6 +1089,279 @@ def train_ctc():
     print('train done')
 
 
+CLIP_LENGTH = 16
+STRIDE_COUNT = 3
+STRIDE_RANGE = 4
+NUM_CLASSES = 1295
+BATCH_SIZE = 4
+EPOCH = 50
+
+
+def gloss_train():
+    dev_framelen, test_framelen, train_framelen, padding_x = get_all_length()
+
+    x_list, x_key_list, signer_list, sentence_list = get_label_data('train')
+
+    x_list_test, x_key_list_test, signer_list_test, sentence_list_test = get_label_data('test')
+
+    transformed_dev, transformed_test, transformed_train, \
+    label_len_dev, label_len_test, label_len_train, \
+    onehot_dev, onehot_test, onehot_train = get_sentence_token()
+
+    # x_data = x_list_test
+    # x_data_keypoint = x_key_list
+    # y_data = transformed_test
+    # x_len = test_framelen
+    # y_len = label_len_test
+
+    x_data = x_list
+    x_data_keypoint = x_key_list
+    y_data = onehot_train
+    x_len = train_framelen
+    y_len = label_len_train
+
+    x_data_val = x_list_test
+    x_data_keypoint_validate = x_key_list_test
+    y_data_val = onehot_test
+    x_len_val = test_framelen
+    y_len_val = label_len_test
+
+    print(x_data[0])
+    print(y_data[0])
+    print(x_len[0])
+    print(y_len[0])
+
+    train_clip_length, train_clip_length_max = clip_length(x_len, y_len)
+    train_clip_length_val, train_clip_length_max_val = clip_length(x_len_val, y_len_val)
+
+    print(train_clip_length)
+    print(train_clip_length_max)
+
+    model = build_model_iterative()
+
+    metrics_names = ['val']
+
+    for epoch in range(0, EPOCH):
+        pb_i = Progbar(len(x_data), stateful_metrics=metrics_names)
+        print(f'EPOCH : {epoch + 1}')
+
+        loss = []
+        acc = []
+
+        val_loss = []
+        val_acc = []
+
+        for idx, val in enumerate(x_data):
+            if DEBUG:
+                print(val)
+                print(y_len[idx])
+                print(train_clip_length[idx])
+                print(x_len[idx])
+                print(y_data[idx])
+
+            x_train, y_train = clip_data_generator(val, y_len[idx], train_clip_length[idx], x_len[idx], y_data[idx])
+
+            if DEBUG:
+                print(x_train.shape)
+                print(y_train.shape)
+                print(y_train.shape)
+                print(y_train.shape)
+
+            for i in range(0, len(x_train) // BATCH_SIZE):
+                x_batch = x_train[i * BATCH_SIZE:min(len(x_train), (i + 1) * BATCH_SIZE)]
+                y_batch = y_train[i * BATCH_SIZE:min(len(y_train), (i + 1) * BATCH_SIZE)]
+
+                if DEBUG:
+                    print(np.asarray(x_batch).shape)
+                    print(np.asarray(y_batch).shape)
+
+                history = model.train_on_batch(x=np.array(x_batch), y=np.array(y_batch))
+                # print(history)
+
+                values = [('loss', history[0]), ('accuracy', history[1])]
+
+                loss.append(history[0])
+                acc.append(history[1])
+
+            pb_i.add(1, values=values)
+
+        loss_avg = np.average(loss)
+        acc_avg = np.average(acc)
+        print('#########')
+        print(f'loss AVG / EPOCH {epoch + 1} : {loss_avg}')
+        print(f'accuracy AVG / EPOCH {epoch + 1} : {acc_avg}')
+        print('#########')
+
+        pb_val = Progbar(len(x_data_val), stateful_metrics=metrics_names)
+        for idx, val in enumerate(x_data_val):
+
+            x_train, y_train = clip_data_generator(val, y_len_val[idx], train_clip_length_val[idx], x_len_val[idx], y_data_val[idx])
+
+            for i in range(0, len(x_train) // BATCH_SIZE):
+                x_batch = x_train[i * BATCH_SIZE:min(len(x_train), (i + 1) * BATCH_SIZE)]
+                y_batch = y_train[i * BATCH_SIZE:min(len(y_train), (i + 1) * BATCH_SIZE)]
+
+                if DEBUG:
+                    print(np.asarray(x_batch).shape)
+                    print(np.asarray(y_batch).shape)
+
+                history = model.evaluate(x=np.array(x_batch), y=np.array(y_batch), verbose=0)
+                # print(history)
+
+                values = [('loss', history[0]), ('accuracy', history[1])]
+
+                val_loss.append(history[0])
+                val_acc.append(history[1])
+
+            pb_val.add(1, values=values)
+
+        val_loss_avg = np.average(val_loss)
+        val_acc_avg = np.average(val_acc)
+        print('#########')
+        print(f'val loss AVG / EPOCH {epoch + 1} : {val_loss_avg}')
+        print(f'val accuracy AVG / EPOCH {epoch + 1} : {val_acc_avg}')
+        print('#########')
+
+        model.save(
+            filepath=f'{ITERATIVE_OUTPUT}/iterative-e{epoch}-loss{loss_avg}-acc{acc_avg}-val_loss{val_loss_avg}-val_acc{val_acc_avg}.h5')
+
+    model.save(filepath=f'{ITERATIVE_OUTPUT}/iterative-{EPOCH}.h5')
+
+
+def clip_length(frame_length=[], gloss_length=[]):
+    clip_lengths = [math.ceil(frame_length[idx] / gloss_length[idx]) for idx, val in enumerate(frame_length)]
+
+    return clip_lengths, np.max(clip_lengths)
+
+
+def clip_data_generator(path, label_length, clip_length, frame_len, label_data):
+    allframes = [path + r'\\' + f for f in listdir(path) if isfile(join(path, f))]
+
+    if DEBUG:
+        print(allframes)
+
+    all_video = []
+    all_label = []
+
+    for idx in range(0, label_length):
+
+        start_frame = (idx * clip_length)
+        end_frame = (start_frame + CLIP_LENGTH)
+
+        label = label_data[idx]
+
+        for stride_idx in range(0, STRIDE_COUNT):
+            left, right, top, bottom = crop_randomizer(WIDTH, HEIGHT)
+            strided_frame = stride_idx * STRIDE_RANGE
+            if DEBUG:
+                print(strided_frame)
+                print(start_frame)
+                print(end_frame)
+
+            video_array = []
+
+            for frame_idx in range(start_frame + strided_frame, end_frame + strided_frame):
+                if frame_idx >= frame_len:
+                    # print(empty_frame)
+                    empty_frame = np.zeros((IMG_SIZE, IMG_SIZE, 3))
+                    video_array.append(np.array(empty_frame))
+                else:
+                    # print(allframes[frame_idx])
+                    frame = Image.open(allframes[frame_idx])
+                    cropped = frame.crop((left, top, right, bottom))
+                    resized_image = cropped.resize((IMG_SIZE, IMG_SIZE))
+                    video_array.append(np.array(resized_image))
+
+            all_video.append(video_array)
+            all_label.append(label)
+
+    if DEBUG:
+        print(np.array(all_video))
+        print(np.array(all_label))
+        print(np.array(all_video).shape)
+        print(np.array(all_label).shape)
+        exit()
+
+    return np.array(all_video), np.array(all_label)
+
+
+def crop_randomizer(width, height):
+    random_left = random.randint(0, 8)
+    random_right = random.randint(0, 12)
+    random_top = random.randint(0, 12)
+    random_down = random.randint(0, 15)
+
+    return random_left, width - random_right, random_top, height - random_down
+
+
+def build_model_iterative():
+    input_full_frame = tf.keras.Input(name="input_1", shape=(CLIP_LENGTH, 224, 224, 3))
+
+    spatialBlock = SpatialBlock(input_full_frame)
+
+    attn_spatial = tf.keras.layers.MultiHeadAttention(num_heads=4, key_dim=4, name="spatial_attn")(spatialBlock,
+                                                                                                   spatialBlock)
+
+    '''
+    TCN -> Dense
+    '''
+    o_tcn_full = TCN_layer(attn_spatial, 5)
+    dense = Dense(256, name='dense_o_tcn1')(o_tcn_full)
+
+    '''
+    TMC (cont)
+    '''
+
+    o_tcn_block1 = TCN_layer(dense, 1)
+    o_tcn_block1 = Dense(256, name='dense_o_tcn_intra_block1')(o_tcn_block1)
+    o_tcn_block1 = Dense(512)(o_tcn_block1)
+    o_tcn_block1 = Dense(512)(o_tcn_block1)
+    block1 = MaxPooling1D(pool_size=5, strides=2)(o_tcn_block1)
+
+    i_tcn2 = block1
+    o_tcn2 = TCN_layer(i_tcn2, 5)
+    dense2 = Dense(256, name='dense_o_tcn2')(o_tcn2)
+
+    o_tcn_block2 = TCN_layer(dense2, 1)
+    o_tcn_block2 = Dense(512, name='dense_o_tcn_intra_block2')(o_tcn_block2)
+    o_tcn_block2 = Dense(NUM_CLASSES)(o_tcn_block2)
+    block2 = MaxPooling1D(pool_size=5, strides=2)(o_tcn_block2)
+
+    flatten = Flatten()(block2)  # using flatten to sync the network size
+
+    dense_gloss = Dense(NUM_CLASSES, name='dense_gloss', activation="softmax")(flatten)
+
+    # out = Activation('softmax', name='softmax')(dense_gloss)
+
+    '''
+    Sequence Learning # endregion
+    '''
+    network = Model(inputs=[input_full_frame], outputs=dense_gloss)
+
+    # print(network.get_model_train())
+
+    if LOAD_WEIGHT:
+        network.load_model(path_dir=f'{MODEL_LOAD_PATH}', file_weights='/model_weights.hdf5',
+                           optimizer=Adam(0.00001), init_last_layer=False, init_archi=False)
+        print('Weight Loaded from previous train')
+
+    network.compile(optimizer=Adam(lr=0.001), loss="categorical_crossentropy", metrics=['accuracy'])
+
+    network.summary()
+
+    return network
+
+
+def generate_one_hot(index, max_class):
+    zeros_all_tokens = np.zeros((max_class,), dtype=int)
+
+    for idx, val in enumerate(zeros_all_tokens):
+        if (idx == index):
+            zeros_all_tokens[idx] = 1
+
+    return zeros_all_tokens
+
+
 # Press the green button in the gutter to run the script.
 if __name__ == '__main__':
     # extract_data('test')
@@ -1088,9 +1382,20 @@ if __name__ == '__main__':
 
     # transformed_dev, transformed_test, transformed_train, label_len_dev, label_len_test, label_len_train = get_sentence_token()
 
-    train_ctc()
+    # train_ctc()
 
     # load_img(
     #     r'D:\Dataset\Sign Language\Phoenix\phoenix-2014.v3.tar\phoenix2014-release\phoenix-2014-multisigner\features\fullFrame-210x260px\dev\01April_2010_Thursday_heute_default-1\1')
+
+    gloss_train()
+
+    # clip_data_generator(
+    #     r'D:\Dataset\Sign Language\Phoenix\phoenix-2014.v3.tar\phoenix2014-release\phoenix-2014-multisigner\features\fullFrame-210x260px\\\train\01April_2010_Thursday_heute_default-0\1',
+    #     12,
+    #     CLIP_LENGTH,
+    #     176,
+    #     [1203,538,1185,6,1133,354,1242,856,1256,1003,41,464,0,0,
+    #      0,0,0,0,0,0,0,0,0,0,0,0,0,0]
+    # )
 
 # See PyCharm help at https://www.jetbrains.com/help/pycharm/
