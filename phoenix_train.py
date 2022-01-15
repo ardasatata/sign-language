@@ -790,32 +790,32 @@ def train_ctc():
     o_tcn_key_block1 = Dense(256)(o_tcn_key_block1)
     block1_key = MaxPooling1D(pool_size=5, strides=2)(o_tcn_key_block1)
 
-    i_tcn2 = block1
-    o_tcn2 = TCN_layer(i_tcn2, 5)
-    # flatten2 = Flatten()(o_tcn2) # using flatten to sync the network size
-    dense2 = Dense(256, name='dense_o_tcn2')(o_tcn2)
-    o_tcn_block2 = TCN_layer(dense2, 1)
-    o_tcn_block2 = Dense(512, name='dense_o_tcn_intra_block2')(o_tcn_block2)
-    o_tcn_block2 = Dense(512)(o_tcn_block2)
-    block2 = MaxPooling1D(pool_size=5, strides=2)(o_tcn_block2)
+    # i_tcn2 = block1
+    # o_tcn2 = TCN_layer(i_tcn2, 5)
+    # # flatten2 = Flatten()(o_tcn2) # using flatten to sync the network size
+    # dense2 = Dense(256, name='dense_o_tcn2')(o_tcn2)
+    # o_tcn_block2 = TCN_layer(dense2, 1)
+    # o_tcn_block2 = Dense(512, name='dense_o_tcn_intra_block2')(o_tcn_block2)
+    # o_tcn_block2 = Dense(512)(o_tcn_block2)
+    # block2 = MaxPooling1D(pool_size=5, strides=2)(o_tcn_block2)
+    #
+    # block2_attn = tf.keras.layers.MultiHeadAttention(num_heads=4, key_dim=4, name="block2_attn")(block2, block2)
+    #
+    # i_tcn2_key = block1_key
+    # o_tcn2_key = TCN_layer(i_tcn2_key, 5)
+    # # flatten2 = Flatten()(o_tcn2) # using flatten to sync the network size
+    # dense2_key = Dense(256, activation='relu', name='dense_o_tcn2_key')(o_tcn2_key)
+    # o_tcn_key_block2 = TCN_layer(dense2_key, 1)
+    # o_tcn_key_block2 = Dense(256, name='dense_o_tcn_key_intra_block2')(o_tcn_key_block2)
+    # o_tcn_key_block2 = Dense(256)(o_tcn_key_block2)
+    # block2_key = MaxPooling1D(pool_size=5, strides=2)(o_tcn_key_block2)
+    #
+    # # block2_key_attn = tf.keras.layers.MultiHeadAttention(num_heads=4, key_dim=4, name="block2_key_attn")(block2_key, block2_key)
+    #
+    # # concat = concatenate([block2_attn, block2_key_attn], axis=2)
 
-    block2_attn = tf.keras.layers.MultiHeadAttention(num_heads=4, key_dim=4, name="block2_attn")(block2, block2)
-
-    i_tcn2_key = block1_key
-    o_tcn2_key = TCN_layer(i_tcn2_key, 5)
-    # flatten2 = Flatten()(o_tcn2) # using flatten to sync the network size
-    dense2_key = Dense(256, activation='relu', name='dense_o_tcn2_key')(o_tcn2_key)
-    o_tcn_key_block2 = TCN_layer(dense2_key, 1)
-    o_tcn_key_block2 = Dense(256, name='dense_o_tcn_key_intra_block2')(o_tcn_key_block2)
-    o_tcn_key_block2 = Dense(256)(o_tcn_key_block2)
-    block2_key = MaxPooling1D(pool_size=5, strides=2)(o_tcn_key_block2)
-
-    # block2_key_attn = tf.keras.layers.MultiHeadAttention(num_heads=4, key_dim=4, name="block2_key_attn")(block2_key, block2_key)
-
-    # concat = concatenate([block2_attn, block2_key_attn], axis=2)
-
-    # concat = concatenate([block2, block2_key], axis=2)
-    concat = block2
+    concat = concatenate([block1, block1_key], axis=2)
+    # concat =
 
     '''
     TMC (cont) # endregion
@@ -832,7 +832,7 @@ def train_ctc():
     '''
     Sequence Learning # endregion
     '''
-    network = CTCModel([i_vgg], [outrnn])  # -- 4
+    network = CTCModel([i_vgg, i_keypoint], [outrnn])  # -- 4
 
     print(network.get_model_train())
 
@@ -841,7 +841,7 @@ def train_ctc():
                            optimizer=Adam(0.00001), init_last_layer=False, init_archi=False)
         print('Weight Loaded from previous train')
 
-    network.compile(optimizer=Adam(lr=0.00001))
+    network.compile(optimizer=Adam(lr=0.0001))
 
     network.summary()
 
@@ -888,7 +888,7 @@ def train_ctc():
             x_key_list = []
 
             # TODO Get value from network softmax Layer
-            length = 72
+            length = 148
 
             # print(f'\nLoad data {epoch} / batch {i}')
             for i_data in range(0, len(X)):
@@ -930,7 +930,7 @@ def train_ctc():
                     print(x_npy.shape)
                     print(load_npz.shape)
 
-            input = [np.array(x_list), np.array(y_list), np.array(x_len_list),
+            input = [np.array(x_list),np.array(x_key_list), np.array(y_list), np.array(x_len_list),
                      np.array(y_len_list)]
 
             history = network.train_on_batch(
@@ -1012,6 +1012,7 @@ def train_ctc():
 
             predict = network.predict_on_batch(
                 x=[np.concatenate((np.array(x_list), np.array(x_list)), axis=0),
+                   np.concatenate((np.array(x_key_list), np.array(x_key_list)), axis=0),
                    np.concatenate((np.array(x_len_list), np.array(x_len_list)), axis=0)])
             y_new = np.concatenate((np.array(y_list), np.array(y_list)), axis=0)
 

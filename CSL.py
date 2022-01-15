@@ -15,7 +15,7 @@ import csv
 
 import re
 
-import imageio
+# import imageio
 
 # import progressbar
 import tensorflow as tf
@@ -43,16 +43,16 @@ import os
 
 from tqdm import tqdm
 
-CSL_PATH = r'D:\Dataset\Sign Language\CSL\pytorch\color'
+CSL_PATH = r'F:\Dataset\Sign Language\CSL\pytorch\color'
 
 # OUTPUT_PATH = r'F:\Dataset\Sign Language\CSL-Output'
-# OUTPUT_PATH = r'F:\Dataset\Sign Language\CSL-Output'
+OUTPUT_PATH = r'F:\Dataset\Sign Language\CSL-Output'
 # OUTPUT_PATH = r'F:\Dataset\Sign Language\CSL-Output-ResNet'
-OUTPUT_PATH = r'D:\Dataset\Sign Language\CSL-Output_test'
-KEYPOINT_PATH = r'D:\Dataset\Sign Language\CSL-Key_test'
-MODEL_SAVE_PATH = r"D:\Dataset\Sign Language\CSL Model + Keypoint - Test"
+OUTPUT_PATH = r'F:\Dataset\Sign Language\CSL-Output-ResNet-conv5_block3_1_conv'
+KEYPOINT_PATH = r'F:\Dataset\Sign Language\CSL-Key'
+MODEL_SAVE_PATH = r"F:\Dataset\Sign Language\CSL Model wo attn + Keypoint + ResNet-conv5_block3_1_conv"
 # MODEL_SAVE_PATH = r"F:\Dataset\Sign Language\CSL Model + Keypoint Resnet"
-CLASS_COUNT = 10
+CLASS_COUNT = 100
 
 SENTENCE_START = 70
 SENTENCE_END = 100
@@ -245,14 +245,13 @@ def ResBlock(x, filters, kernel_size, dilation_rate):
 
 
 def TCN_layer(input_layer, kernel):
+    # out = tf.keras.layers.MultiHeadAttention(num_heads=4, key_dim=4)(x, x)
     #    inputs=Input(shape=(28,28))
     # print(input_layer)
     x = ResBlock(input_layer, filters=64, kernel_size=kernel, dilation_rate=1)
     x = ResBlock(x, filters=64, kernel_size=kernel, dilation_rate=2)
     x = ResBlock(x, filters=64, kernel_size=kernel, dilation_rate=4)
     x = ResBlock(x, filters=64, kernel_size=kernel, dilation_rate=8)
-
-    # out = tf.keras.layers.MultiHeadAttention(num_heads=4, key_dim=4)(x, x)
     # x = Flatten()(x)
 
     return x
@@ -268,10 +267,10 @@ def train_ctc(shuffle=True):
     #     x_data, y_data = zip(*c)
 
     # Input from intermediate layer
-    i_vgg = tf.keras.Input(name="input_1", shape=(100, 56, 56, 256))
+    i_vgg = tf.keras.Input(name="input_1", shape=(skipped_max_len, 7, 7, 512))
 
     # Input Keypoint
-    i_keypoint = tf.keras.Input(name="input_1_keypoint", shape=(100, 1, 27, 3))
+    i_keypoint = tf.keras.Input(name="input_1_keypoint", shape=(skipped_max_len, 1, 27, 3))
     output_keypoint = TimeDistributed(GlobalAveragePooling2D(name="global_max_full"))(i_keypoint)
     dense_input_keypoint = Dense(256, activation='relu', name='dense_keypoint')(output_keypoint)
 
@@ -337,7 +336,7 @@ def train_ctc(shuffle=True):
 
     '''
     TMC (cont) # endregion
-
+    
     '''
 
     '''
@@ -415,13 +414,6 @@ def train_ctc(shuffle=True):
             # print(f'\nLoad data {epoch} / batch {i}')
             for i_data in range(0, len(X)):
                 # x_seq, y_seq = sentence_sequence_generator_npz(X[i_data], y[i_data])
-
-
-                print(np.where(y[i_data])[1])
-                print(length)
-                print(np.asarray(Y_len[i_data]))
-
-                exit()
 
                 load_npz = np.load(X[i_data][0])
 
