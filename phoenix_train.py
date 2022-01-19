@@ -742,8 +742,7 @@ def SpatialBlock(input):
 
 # Residual block
 def ResBlock(x, filters, kernel_size, dilation_rate):
-    r = Conv1D(filters, kernel_size, padding='same', dilation_rate=dilation_rate, activation='elu')(
-        x)  # first convolution
+    r = Conv1D(filters, kernel_size, padding='same', dilation_rate=dilation_rate, activation='elu')(x)  # first convolution
     r = Conv1D(filters, kernel_size, padding='same', dilation_rate=dilation_rate)(r)  # Second convolution
     if x.shape[-1] == filters:
         shortcut = x
@@ -757,10 +756,12 @@ def ResBlock(x, filters, kernel_size, dilation_rate):
 def TCN_layer(input_layer, kernel):
     #    inputs=Input(shape=(28,28))
     # print(input_layer)
-    x = ResBlock(input_layer, filters=64, kernel_size=kernel, dilation_rate=1)
-    x = ResBlock(x, filters=64, kernel_size=kernel, dilation_rate=2)
-    x = ResBlock(x, filters=64, kernel_size=kernel, dilation_rate=4)
-    x = ResBlock(x, filters=64, kernel_size=kernel, dilation_rate=8)
+    # x = ResBlock(input_layer, filters=64, kernel_size=kernel, dilation_rate=1)
+    # x = ResBlock(x, filters=64, kernel_size=kernel, dilation_rate=2)
+    # x = ResBlock(x, filters=64, kernel_size=kernel, dilation_rate=4)
+    # x = ResBlock(x, filters=64, kernel_size=kernel, dilation_rate=8)
+
+    x = Conv1D(512, kernel, padding='same', dilation_rate=1, activation='elu')(input_layer)  # first convolution
 
     # out = tf.keras.layers.MultiHeadAttention(num_heads=4, key_dim=4)(x, x)
     # x = Flatten()(x)
@@ -775,7 +776,7 @@ def train_ctc():
 
     x_list_test, x_key_list_test, signer_list_test, sentence_list_test = get_label_data('test')
 
-    transformed_dev, transformed_test, transformed_train, label_len_dev, label_len_test, label_len_train = get_sentence_token()
+    transformed_dev, transformed_test, transformed_train, label_len_dev, label_len_test, label_len_train, a, b, c = get_sentence_token()
 
     x_data = x_list
     x_data_keypoint = x_key_list
@@ -803,16 +804,14 @@ def train_ctc():
 
     spatialBlock = SpatialBlock(i_vgg)
 
-    attn_spatial = tf.keras.layers.MultiHeadAttention(num_heads=4, key_dim=4, name="spatial_attn")(spatialBlock,
-                                                                                                   spatialBlock)
+    attn_spatial = tf.keras.layers.MultiHeadAttention(num_heads=4, key_dim=4, name="spatial_attn")(spatialBlock, spatialBlock)
 
     # Input Keypoint
     i_keypoint = tf.keras.Input(name="input_1_keypoint", shape=(max_len, 1, 27, 3))
     output_keypoint = TimeDistributed(GlobalAveragePooling2D(name="global_max_full"))(i_keypoint)
     dense_input_keypoint = Dense(256, activation='relu', name='dense_keypoint')(output_keypoint)
 
-    attn_keypoint = tf.keras.layers.MultiHeadAttention(num_heads=4, key_dim=4, name="keypoint_attn")(
-        dense_input_keypoint, dense_input_keypoint)
+    attn_keypoint = tf.keras.layers.MultiHeadAttention(num_heads=4, key_dim=4, name="keypoint_attn")(dense_input_keypoint, dense_input_keypoint)
 
     '''
     TCN -> Dense
@@ -872,7 +871,7 @@ def train_ctc():
     Sequence Learning
     '''
 
-    blstm = Bidirectional(LSTM(128, return_sequences=True, dropout=0.1))(concat)
+    blstm = Bidirectional(LSTM(512, return_sequences=True, dropout=0.1))(concat)
     dense = TimeDistributed(Dense(num_classes + 1, name="dense"))(blstm)  # -- 2
     outrnn = Activation('softmax', name='softmax')(dense)
 
@@ -1326,30 +1325,15 @@ def build_model_iterative():
     '''
     TCN -> Dense
     '''
-    o_tcn_full = TCN_layer(attn_spatial, 5)
-    dense = Dense(256, name='dense_o_tcn1')(o_tcn_full)
+    tcn = TCN_layer(attn_spatial, 5)
+    block1 = MaxPooling1D(pool_size=2, strides=2)(tcn)
 
-    '''
-    TMC (cont)
-    '''
+    tcn2 = TCN_layer(block1, 5)
+    block2 = MaxPooling1D(pool_size=2, strides=2)(tcn2)
 
-    o_tcn_block1 = TCN_layer(dense, 1)
-    o_tcn_block1 = Dense(256, name='dense_o_tcn_intra_block1')(o_tcn_block1)
-    o_tcn_block1 = Dense(512)(o_tcn_block1)
-    # o_tcn_block1 = Dense(512)(o_tcn_block1)
-    block1 = MaxPooling1D(pool_size=5, strides=2)(o_tcn_block1)
+    blstm = Bidirectional(LSTM(512, return_sequences=True, dropout=0.1))(block2)
 
-    i_tcn2 = block1
-    o_tcn2 = TCN_layer(i_tcn2, 5)
-    dense2 = Dense(256, name='dense_o_tcn2')(o_tcn2)
-
-    o_tcn_block2 = TCN_layer(dense2, 1)
-    o_tcn_block2 = Dense(512, name='dense_o_tcn_intra_block2')(o_tcn_block2)
-    o_tcn_block2 = Dense(NUM_CLASSES)(o_tcn_block2)
-    block2 = MaxPooling1D(pool_size=5, strides=2)(o_tcn_block2)
-
-    flatten = Flatten()(block2)  # using flatten to sync the network size
-    # flatten = Flatten()(block1)  # using flatten to sync the network size
+    flatten = Flatten()(blstm)  # using flatten to sync the network size
 
     dense_gloss = Dense(NUM_CLASSES, name='dense_gloss', activation="softmax")(flatten)
 
@@ -1366,7 +1350,7 @@ def build_model_iterative():
         network.load_weights(filepath=f'{ITERATIVE_OUTPUT}/iterative-e1-loss5.412313874088155-acc0.042382307017731484-val_loss5.745024114044492-val_acc0.0246714070243482.h5', by_name=True)
         print('Weight Loaded from previous train')
 
-    network.compile(optimizer=Adam(lr=0.001), loss="categorical_crossentropy", metrics=['accuracy'])
+    network.compile(optimizer=Adam(lr=0.0001), loss="categorical_crossentropy", metrics=['accuracy'])
 
     network.summary()
 
@@ -1545,12 +1529,12 @@ if __name__ == '__main__':
 
     # transformed_dev, transformed_test, transformed_train, label_len_dev, label_len_test, label_len_train = get_sentence_token()
 
-    # train_ctc()
+    train_ctc()
 
     # load_img(
     #     r'D:\Dataset\Sign Language\Phoenix\phoenix-2014.v3.tar\phoenix2014-release\phoenix-2014-multisigner\features\fullFrame-210x260px\dev\01April_2010_Thursday_heute_default-1\1')
 
-    gloss_train()
+    # gloss_train()
 
     # predict_iterative()
 
