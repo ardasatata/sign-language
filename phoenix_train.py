@@ -85,6 +85,8 @@ MODEL_NAME = r"D:\Dataset\Sign Language\Pretrain\resnet_conv5_block3_1_conv.h5"
 
 ITERATIVE_OUTPUT = r"D:\Dataset\Sign Language\Phoenix\iterative-model"
 
+VAC_FEATURES_PATH = r'D:\Dataset\Sign Language\Phoenix\vac\baseline-18\features'
+
 IS_ENDTOEND = True
 
 PREVIEW = False
@@ -553,6 +555,8 @@ def get_label_data(config='dev'):
     signer_list = df[2].tolist()
     sentence_list = df[3].tolist()
 
+    vac_features = []
+
     for idx, val in enumerate(x_data_path):
         x_key_path = f'{keypoint_path}\{x_data[idx]}.npy'
 
@@ -564,13 +568,17 @@ def get_label_data(config='dev'):
         x_list.append(x_path)
         x_key_list.append(x_key_path)
 
-    return x_list, x_key_list, signer_list, sentence_list
+        vac_features_path = f'{VAC_FEATURES_PATH}\{config}\{x_data[idx]}_features.npy'
+
+        vac_features.append(vac_features_path)
+
+    return x_list, x_key_list, signer_list, sentence_list, vac_features
 
 
 def get_sentence_token():
-    a, b, c, sentence_dev = get_label_data('dev')
-    a, b, c, sentence_test = get_label_data('test')
-    a, b, c, sentence_train = get_label_data('train')
+    a, b, c, sentence_dev, d = get_label_data('dev')
+    a, b, c, sentence_test, d = get_label_data('test')
+    a, b, c, sentence_train, d = get_label_data('train')
 
     all_sentences = np.concatenate((sentence_dev, sentence_test, sentence_train), axis=0)
 
@@ -688,6 +696,8 @@ def calculate_wer(gt=None, result=None, length=5):
 
     error = wer(gt3, hp3)
 
+    # "0 4 5 12 132 704 982"
+
     return error
 
 
@@ -742,7 +752,8 @@ def SpatialBlock(input):
 
 # Residual block
 def ResBlock(x, filters, kernel_size, dilation_rate):
-    r = Conv1D(filters, kernel_size, padding='same', dilation_rate=dilation_rate, activation='elu')(x)  # first convolution
+    r = Conv1D(filters, kernel_size, padding='same', dilation_rate=dilation_rate, activation='elu')(
+        x)  # first convolution
     r = Conv1D(filters, kernel_size, padding='same', dilation_rate=dilation_rate)(r)  # Second convolution
     if x.shape[-1] == filters:
         shortcut = x
@@ -769,12 +780,25 @@ def TCN_layer(input_layer, kernel):
     return x
 
 
+def load_vac_features(path):
+    features = np.load(path,
+                       allow_pickle=True).item()
+
+    if DEBUG:
+        print(features.get('label').numpy())
+        print(features.get('features').numpy())
+        print(features.get('label').numpy().shape)
+        print(features.get('features').numpy().shape)
+
+    return features.get('features').numpy(), features.get('features').numpy().shape[0]
+
+
 def train_ctc():
     dev_framelen, test_framelen, train_framelen, padding_x = get_all_length()
 
-    x_list, x_key_list, signer_list, sentence_list = get_label_data('train')
+    x_list, x_key_list, signer_list, sentence_list, vac_train = get_label_data('train')
 
-    x_list_test, x_key_list_test, signer_list_test, sentence_list_test = get_label_data('test')
+    x_list_test, x_key_list_test, signer_list_test, sentence_list_test, vac_test = get_label_data('test')
 
     transformed_dev, transformed_test, transformed_train, label_len_dev, label_len_test, label_len_train, a, b, c = get_sentence_token()
 
@@ -783,14 +807,16 @@ def train_ctc():
     y_data = transformed_train
     x_len = train_framelen
     y_len = label_len_train
+    x_vac = vac_train
 
     x_data_val = x_list_test
     x_data_keypoint_validate = x_key_list_test
     y_data_val = transformed_test
     x_len_val = test_framelen
     y_len_val = label_len_test
+    x_vac_val = vac_test
 
-    max_len = padding_x
+    max_len = padding_x + 16
     num_classes = 1295
     # skipped_max_len
 
@@ -800,68 +826,61 @@ def train_ctc():
     #     x_data, y_data = zip(*c)
 
     # Input from intermediate layer
-    i_vgg = tf.keras.Input(name="input_1", shape=(max_len, 224, 224, 3))
+    input = tf.keras.Input(name="input_1", shape=(max_len, 512))
 
-    spatialBlock = SpatialBlock(i_vgg)
+    # spatialBlock = SpatialBlock(input)
 
-    attn_spatial = tf.keras.layers.MultiHeadAttention(num_heads=4, key_dim=4, name="spatial_attn")(spatialBlock, spatialBlock)
+    # attn_spatial = tf.keras.layers.MultiHeadAttention(num_heads=4, key_dim=4, name="spatial_attn")(spatialBlock, spatialBlock)
 
-    # Input Keypoint
-    i_keypoint = tf.keras.Input(name="input_1_keypoint", shape=(max_len, 1, 27, 3))
-    output_keypoint = TimeDistributed(GlobalAveragePooling2D(name="global_max_full"))(i_keypoint)
-    dense_input_keypoint = Dense(256, activation='relu', name='dense_keypoint')(output_keypoint)
+    # # Input Keypoint
+    # i_keypoint = tf.keras.Input(name="input_1_keypoint", shape=(max_len, 1, 27, 3))
+    # output_keypoint = TimeDistributed(GlobalAveragePooling2D(name="global_max_full"))(i_keypoint)
+    # dense_input_keypoint = Dense(256, activation='relu', name='dense_keypoint')(output_keypoint)
 
-    attn_keypoint = tf.keras.layers.MultiHeadAttention(num_heads=4, key_dim=4, name="keypoint_attn")(dense_input_keypoint, dense_input_keypoint)
+    # attn_keypoint = tf.keras.layers.MultiHeadAttention(num_heads=4, key_dim=4, name="keypoint_attn")(dense_input_keypoint, dense_input_keypoint)
 
     '''
     TCN -> Dense
     '''
-    o_tcn_full = TCN_layer(attn_spatial, 5)
-    o_tcn_keypoint = TCN_layer(attn_keypoint, 5)
-
-    dense = Dense(256, name='dense_o_tcn1')(o_tcn_full)
-    dense_keypoint = Dense(256, activation='relu', name='dense_o_keypoint')(o_tcn_keypoint)
+    o_tcn_full = TCN_layer(input, 5)
+    # o_tcn_keypoint = TCN_layer(output_keypoint, 5)
+    #
+    # dense = Dense(256, name='dense_o_tcn1')(o_tcn_full)
+    # dense_keypoint = Dense(256, activation='relu', name='dense_o_keypoint')(o_tcn_keypoint)
 
     '''
     TMC (cont)
     '''
 
-    o_tcn_block1 = TCN_layer(dense, 1)
-    o_tcn_block1 = Dense(256, name='dense_o_tcn_intra_block1')(o_tcn_block1)
-    o_tcn_block1 = Dense(512)(o_tcn_block1)
-    o_tcn_block1 = Dense(512)(o_tcn_block1)
-    block1 = MaxPooling1D(pool_size=5, strides=2)(o_tcn_block1)
+    # o_tcn_block1 = TCN_layer(dense, 1)
+    # o_tcn_block1 = Dense(256, name='dense_o_tcn_intra_block1')(o_tcn_block1)
+    # o_tcn_block1 = Dense(512)(o_tcn_block1)
+    # o_tcn_block1 = Dense(512)(o_tcn_block1)
+    block1 = MaxPooling1D(pool_size=2, strides=2)(o_tcn_full)
 
-    o_tcn_key_block1 = TCN_layer(dense_keypoint, 1)
-    o_tcn_key_block1 = Dense(256, name='dense_o_tcn_key_intra_block1')(o_tcn_key_block1)
-    o_tcn_key_block1 = Dense(256)(o_tcn_key_block1)
-    block1_key = MaxPooling1D(pool_size=5, strides=2)(o_tcn_key_block1)
+    # # o_tcn_key_block1 = TCN_layer(dense_keypoint, 1)
+    # # o_tcn_key_block1 = Dense(256, name='dense_o_tcn_key_intra_block1')(o_tcn_key_block1)
+    # # o_tcn_key_block1 = Dense(256)(o_tcn_key_block1)
+    # block1_key = MaxPooling1D(pool_size=2, strides=2)(o_tcn_keypoint)
 
     i_tcn2 = block1
     o_tcn2 = TCN_layer(i_tcn2, 5)
     # flatten2 = Flatten()(o_tcn2) # using flatten to sync the network size
-    dense2 = Dense(256, name='dense_o_tcn2')(o_tcn2)
-    o_tcn_block2 = TCN_layer(dense2, 1)
-    o_tcn_block2 = Dense(512, name='dense_o_tcn_intra_block2')(o_tcn_block2)
-    o_tcn_block2 = Dense(512)(o_tcn_block2)
-    block2 = MaxPooling1D(pool_size=5, strides=2)(o_tcn_block2)
+    # dense2 = Dense(256, name='dense_o_tcn2')(o_tcn2)
+    block2 = MaxPooling1D(pool_size=5, strides=2)(o_tcn2)
 
     block2_attn = tf.keras.layers.MultiHeadAttention(num_heads=4, key_dim=4, name="block2_attn")(block2, block2)
 
-    i_tcn2_key = block1_key
-    o_tcn2_key = TCN_layer(i_tcn2_key, 5)
-    # flatten2 = Flatten()(o_tcn2) # using flatten to sync the network size
-    dense2_key = Dense(256, activation='relu', name='dense_o_tcn2_key')(o_tcn2_key)
-    o_tcn_key_block2 = TCN_layer(dense2_key, 1)
-    o_tcn_key_block2 = Dense(256, name='dense_o_tcn_key_intra_block2')(o_tcn_key_block2)
-    o_tcn_key_block2 = Dense(256)(o_tcn_key_block2)
-    block2_key = MaxPooling1D(pool_size=5, strides=2)(o_tcn_key_block2)
+    # i_tcn2_key = block1_key
+    # o_tcn2_key = TCN_layer(i_tcn2_key, 5)
+    # # dense2_key = Dense(256, activation='relu', name='dense_o_tcn2_key')(o_tcn2_key)
+    # block2_key = MaxPooling1D(pool_size=5, strides=2)(o_tcn2_key)
+    #
+    # # block2_key_attn = tf.keras.layers.MultiHeadAttention(num_heads=4, key_dim=4, name="block2_key_attn")(block2_key, block2_key)
+    #
+    # # concat = concatenate([block2_attn, block2_key_attn], axis=2)
 
-    # block2_key_attn = tf.keras.layers.MultiHeadAttention(num_heads=4, key_dim=4, name="block2_key_attn")(block2_key, block2_key)
-
-    # concat = concatenate([block2_attn, block2_key_attn], axis=2)
-
-    concat = concatenate([block2, block2_key], axis=2)
+    concat = concatenate([block2], axis=2)
 
     '''
     TMC (cont) # endregion
@@ -871,14 +890,14 @@ def train_ctc():
     Sequence Learning
     '''
 
-    blstm = Bidirectional(LSTM(512, return_sequences=True, dropout=0.1))(concat)
+    blstm = Bidirectional(LSTM(512, return_sequences=True, dropout=0.1))(block2)
     dense = TimeDistributed(Dense(num_classes + 1, name="dense"))(blstm)  # -- 2
     outrnn = Activation('softmax', name='softmax')(dense)
 
     '''
     Sequence Learning # endregion
     '''
-    network = CTCModel([i_vgg, i_keypoint], [outrnn])  # -- 4
+    network = CTCModel([input], [outrnn])  # -- 4
 
     print(network.get_model_train())
 
@@ -887,13 +906,13 @@ def train_ctc():
                            optimizer=Adam(0.00001), init_last_layer=False, init_archi=False)
         print('Weight Loaded from previous train')
 
-    network.compile(optimizer=Adam(lr=0.00001))
+    network.compile(optimizer=Adam(lr=0.0001))
 
     network.summary()
 
     metrics_names = ['val']
 
-    batch_size = 1
+    batch_size = 2
     epochs = 30
 
     loss_ = 999999999
@@ -915,7 +934,8 @@ def train_ctc():
         y_zeros_validate = np.zeros(len(x_data_keypoint_validate))
 
         for i in range(0, len(x_data) // batch_size):
-            X = x_data[i * batch_size:min(len(x_data), (i + 1) * batch_size)]
+            # X = x_data[i * batch_size:min(len(x_data), (i + 1) * batch_size)]
+            X = x_vac[i * batch_size:min(len(x_data), (i + 1) * batch_size)]
             y = y_data[i * batch_size:min(len(y_data), (i + 1) * batch_size)]
 
             X_len = x_len[i * batch_size:min(len(x_len), (i + 1) * batch_size)]
@@ -934,7 +954,7 @@ def train_ctc():
             x_key_list = []
 
             # TODO Get value from network softmax Layer
-            length = 72
+            length = 77
 
             # print(f'\nLoad data {epoch} / batch {i}')
             for i_data in range(0, len(X)):
@@ -942,14 +962,19 @@ def train_ctc():
 
                 # load_npz = np.load(X[i_data])
 
-                load_npz = load_img(X[i_data])
+                # load_npz = load_img(X[i_data])
+                features, f_length = load_vac_features(X[i_data])
+                load_npz = features
 
                 if DEBUG:
                     print(X[i_data])
                     print(X_keypoint[i_data])
                     print(X_len[i_data])
 
-                load_npz = np.pad(load_npz, ((0, max_len - X_len[i_data]), (0, 0), (0, 0), (0, 0)), 'constant',
+                # load_npz = np.pad(load_npz, ((0, max_len - X_len[i_data]), (0, 0), (0, 0), (0, 0)), 'constant',
+                #                   constant_values=(0, 0))
+
+                load_npz = np.pad(load_npz, ((0, max_len - f_length), (0, 0)), 'constant',
                                   constant_values=(0, 0))
 
                 x_npy = np.load(X_keypoint[i_data])
@@ -976,7 +1001,10 @@ def train_ctc():
                     print(x_npy.shape)
                     print(load_npz.shape)
 
-            input = [np.array(x_list), np.array(x_key_list), np.array(y_list), np.array(x_len_list),
+            # input = [np.array(x_list), np.array(x_key_list), np.array(y_list), np.array(x_len_list),
+            #          np.array(y_len_list)]
+
+            input = [np.array(x_list), np.array(y_list), np.array(x_len_list),
                      np.array(y_len_list)]
 
             history = network.train_on_batch(
@@ -985,8 +1013,10 @@ def train_ctc():
 
             values = [('val', history)]
 
-            pb_i.add(1, values=values)
+            pb_i.add(batch_size, values=values)
             loss.append(history)
+
+            break
 
         loss_avg = np.average(loss)
         print('#########')
@@ -999,10 +1029,15 @@ def train_ctc():
 
         pb_val = Progbar(len(x_data_keypoint_validate), stateful_metrics=['wer'])
 
+        val_loss = []
+        ler = []
+        ser = []
+
         # Validate dataset
         # for i in range(0, len(x_data_keypoint_validate) // batch_size):
         for i in range(0, len(x_data_keypoint_validate) // 1):
-            X = x_data_val[i * 1:min(len(x_data_val), (i + 1) * 1)]
+            # X = x_data_val[i * 1:min(len(x_data_val), (i + 1) * 1)]
+            X = x_vac_val[i * 1:min(len(x_data_val), (i + 1) * 1)]
             y = y_data_val[i * 1:min(len(y_data_val), (i + 1) * 1)]
 
             X_len = x_len_val[i * 1:min(len(x_len_val), (i + 1) * 1)]
@@ -1027,9 +1062,10 @@ def train_ctc():
 
                 # load_npz = np.load(X[i_data])
 
-                load_npz = load_img(X[i_data])
+                features, f_length = load_vac_features(X[i_data])
+                load_npz = features
 
-                load_npz = np.pad(load_npz, ((0, max_len - X_len[i_data]), (0, 0), (0, 0), (0, 0)), 'constant',
+                load_npz = np.pad(load_npz, ((0, max_len - f_length), (0, 0)), 'constant',
                                   constant_values=(0, 0))
 
                 x_npy = np.load(X_keypoint[i_data])
@@ -1057,9 +1093,19 @@ def train_ctc():
 
             predict = network.predict_on_batch(
                 x=[np.concatenate((np.array(x_list), np.array(x_list)), axis=0),
-                   np.concatenate((np.array(x_key_list), np.array(x_key_list)), axis=0),
+                   # np.concatenate((np.array(x_key_list), np.array(x_key_list)), axis=0),
                    np.concatenate((np.array(x_len_list), np.array(x_len_list)), axis=0)])
+
             y_new = np.concatenate((np.array(y_list), np.array(y_list)), axis=0)
+
+            # input = [
+            #     np.concatenate((np.array(x_list), np.array(x_list)), axis=0),
+            #     np.concatenate((np.array(y_list), np.array(y_list)), axis=0),
+            #     np.concatenate((np.array(x_len_list), np.array(x_len_list)), axis=0),
+            #     np.concatenate((np.array(y_len_list), np.array(y_len_list)), axis=0)]
+            # evaluate = network.evaluate_on_batch(x=input)
+
+            break
 
             if DEBUG:
                 print(y_new)
@@ -1073,18 +1119,18 @@ def train_ctc():
             pb_val.add(1, values=values)
 
         wers_avg = np.average(wers)
-        error_model.append(wers_avg)
+        val_loss_avg = np.average(val_loss)
+        ser_avg = np.average(ser)
+
         print('#########')
         print(f'WER AVG / EPOCH {epoch + 1} : {wers_avg}')
+        print(f'Loss AVG / EPOCH {epoch + 1} : {val_loss_avg}')
+        print(f'SER AVG / EPOCH {epoch + 1} : {ser_avg}')
         print('#########')
 
-        network.save_model(f'{MODEL_SAVE_PATH}/')
-
-    print(acc_model)
-    print(loss_model)
+        # network.save_model(f'{MODEL_SAVE_PATH}/')
 
     print('#########')
-    # print(f'model WER : {error_avg}')
     print('######### xoxo #########')
     print('train done')
 
@@ -1204,7 +1250,8 @@ def gloss_train():
         pb_val = Progbar(len(x_data_val), stateful_metrics=metrics_names)
         for idx, val in enumerate(x_data_val):
 
-            x_train, y_train = clip_data_generator(val, y_len_val[idx], train_clip_length_val[idx], x_len_val[idx], y_data_val[idx])
+            x_train, y_train = clip_data_generator(val, y_len_val[idx], train_clip_length_val[idx], x_len_val[idx],
+                                                   y_data_val[idx])
 
             i_loss = []
             i_acc = []
@@ -1314,8 +1361,11 @@ def crop_randomizer(width, height):
     return random_left, width - random_right, random_top, height - random_down
 
 
+MAX_CLIP = 16
+
+
 def build_model_iterative():
-    input_full_frame = tf.keras.Input(name="input_1", shape=(CLIP_LENGTH, 224, 224, 3))
+    input_full_frame = tf.keras.Input(name="input_1", shape=(MAX_CLIP, CLIP_LENGTH, 224, 224, 3))
 
     spatialBlock = SpatialBlock(input_full_frame)
 
@@ -1333,7 +1383,15 @@ def build_model_iterative():
 
     blstm = Bidirectional(LSTM(512, return_sequences=True, dropout=0.1))(block2)
 
-    flatten = Flatten()(blstm)  # using flatten to sync the network size
+    # flatten = Flatten()(blstm)  # using flatten to sync the network size
+
+    dense = TimeDistributed(Dense(NUM_CLASSES, name="dense", activation="softmax"))(blstm)  # -- 2
+    outrnn = Activation('softmax', name='softmax')(dense)
+
+    '''
+    Sequence Learning # endregion
+    '''
+    network = CTCModel([input_full_frame], [outrnn])  # -- 4
 
     dense_gloss = Dense(NUM_CLASSES, name='dense_gloss', activation="softmax")(flatten)
 
@@ -1347,7 +1405,9 @@ def build_model_iterative():
     # print(network.get_model_train())
 
     if LOAD_WEIGHT:
-        network.load_weights(filepath=f'{ITERATIVE_OUTPUT}/iterative-e1-loss5.412313874088155-acc0.042382307017731484-val_loss5.745024114044492-val_acc0.0246714070243482.h5', by_name=True)
+        network.load_weights(
+            filepath=f'{ITERATIVE_OUTPUT}/iterative-e1-loss5.412313874088155-acc0.042382307017731484-val_loss5.745024114044492-val_acc0.0246714070243482.h5',
+            by_name=True)
         print('Weight Loaded from previous train')
 
     network.compile(optimizer=Adam(lr=0.0001), loss="categorical_crossentropy", metrics=['accuracy'])
@@ -1409,7 +1469,8 @@ def predict_iterative():
 
     metrics_names = ['val']
 
-    model = tf.keras.models.load_model(f'{ITERATIVE_OUTPUT}/iterative-e2-loss5.639923068322988-acc0.04100681372701534-val_loss6.199445651022702-val_acc0.03405185879412684.h5')
+    model = tf.keras.models.load_model(
+        f'{ITERATIVE_OUTPUT}/iterative-e2-loss5.639923068322988-acc0.04100681372701534-val_loss6.199445651022702-val_acc0.03405185879412684.h5')
 
     x_train, y_train = clip_data_generator(x_data[0], y_len[0], train_clip_length[0], x_len[0], y_data[0])
 
@@ -1477,7 +1538,8 @@ def predict_iterative():
         pb_val = Progbar(len(x_data_val), stateful_metrics=metrics_names)
         for idx, val in enumerate(x_data_val):
 
-            x_train, y_train = clip_data_generator(val, y_len_val[idx], train_clip_length_val[idx], x_len_val[idx], y_data_val[idx])
+            x_train, y_train = clip_data_generator(val, y_len_val[idx], train_clip_length_val[idx], x_len_val[idx],
+                                                   y_data_val[idx])
 
             for i in range(0, len(x_train) // BATCH_SIZE):
                 x_batch = x_train[i * BATCH_SIZE:min(len(x_train), (i + 1) * BATCH_SIZE)]
@@ -1508,6 +1570,7 @@ def predict_iterative():
             filepath=f'{ITERATIVE_OUTPUT}/iterative-e{epoch}-loss{loss_avg}-acc{acc_avg}-val_loss{val_loss_avg}-val_acc{val_acc_avg}.h5')
 
     model.save(filepath=f'{ITERATIVE_OUTPUT}/iterative-{EPOCH}.h5')
+
 
 # Press the green button in the gutter to run the script.
 if __name__ == '__main__':
