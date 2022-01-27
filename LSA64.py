@@ -8,7 +8,7 @@ from jiwer import wer
 import gc
 
 # import livelossplot
-import livelossplot as livelossplot
+# import livelossplot as livelossplot
 import tensorflow as tf
 from keras.preprocessing import sequence
 from tensorflow import keras
@@ -26,14 +26,14 @@ from train_custom import VGG, TCN_layer, VGG_2
 
 from keras.models import load_model
 
-from keras.optimizers import Adam, SGD
+from tensorflow.keras.optimizers import Adam, SGD
 
 from keras_ctcmodel.CTCModel import CTCModel as CTCModel
 
 gpus = tf.config.experimental.list_physical_devices('GPU')
-tf.config.experimental.set_memory_growth(gpus[0], True)
+# tf.config.experimental.set_memory_growth(gpus[0], True)
 
-plot_losses = livelossplot.PlotLossesKeras()
+# plot_losses = livelossplot.PlotLossesKeras()
 
 from PIL import Image
 from numpy import savez_compressed
@@ -56,7 +56,7 @@ MODEL = r"D:\TSL\.h5"
 MODEL_SAVE_PATH = r'C:\Users\minelab\dev\TSL\model\LSA64\\'
 CTC_MODEL_PATH = r'C:\Users\minelab\dev\TSL\model\LSA64\CTC\\'
 
-DIR = r'D:\LSA64\LSA64_Cropped'
+DIR = r'F:\Arda\LSA64\LSA64_Cropped'
 
 # DIR = r'E:\arda\LSA_64'
 
@@ -65,12 +65,12 @@ NPZ_DIR = r'D:\LSA64\VGG_out_new'
 
 ORIGINAL_VIDEO_PATH = r'D:\LSA64\LSA64_Cropped\\'
 
-START_FROM = 0
-
 # 10 Class with full sample & subject
+START_FROM = 48
 TOTAL_CLASS = 64
-TOTAL_SUBJECT = 8
-TOTAL_SAMPLE = 3
+
+TOTAL_SUBJECT = 10
+TOTAL_SAMPLE = 5
 
 # # Testing
 # TOTAL_CLASS = 2
@@ -86,6 +86,7 @@ EXT = r'mp4'
 MAX_FRAME = 18
 
 EXTRACT_DESTINATION = r'D:\LSA64\VGG_out_new\\'
+EXTRACT_DESTINATION = r'F:\Arda\LSA64\OUTPUT_VGG\\'
 
 EPOCH = 25
 
@@ -1323,6 +1324,40 @@ def calculate_wer(gt=None, result=None, length=5):
 
     return error
 
+def calculate_wer(gt=None, result=None, length=5):
+    if result is None:
+        result = [
+            [1, 1, 1, 4],
+            [1, 1, 1, 4]
+        ]
+    if gt is None:
+        gt = [[1, 2, 3, 4, 5], [1, 2, 3, 4, 5]]
+
+    gt2 = np.array(gt).astype(str)[:, 0:length]
+    hp2 = np.array(result).astype(int).astype(str)[:, 0:length]
+    # hp2 = np.array(result[0]).astype(int).astype(str)[:, 0:length]
+
+    # print(gt2)
+    # print(hp2)
+
+    gt3 = []
+    hp3 = []
+
+    for i in gt2:
+        string = (" ".join(i))
+        # print(string)
+        gt3.append(string)
+
+    for i in hp2:
+        string = (" ".join(i))
+        # print(string)
+        hp3.append(string)
+
+
+    error = wer(gt3, hp3)
+
+    return error
+
 
 def demo_testing(test_sentence, subject_num=None, sample_num=None):
     N = 5
@@ -1448,10 +1483,10 @@ if __name__ == '__main__':
     # print(y)
     # [12, 50, 23, 48, 44]
 
-    calculate_wer()
+    # calculate_wer()
 
-    # x_data, y_data = generate_data_list()
-    # get_value(x_data)
+    x_data, y_data = generate_data_list()
+    get_value(x_data)
 
     # train_C3D()
 

@@ -14,6 +14,7 @@ from tf_keras_vis.utils import normalize
 import matplotlib.pyplot as plt
 
 import numpy as np
+import gc
 
 import cv2
 
@@ -34,7 +35,8 @@ MODEL_NAME = r"D:\TSL\model-pixel.h5"
 # MODEL_NAME = r"C:\Users\minelab\dev\TSL\model\LSA64\model_pixel_20Class0.05101403589244.h5"
 # MODEL_NAME = r"C:\Users\minelab\dev\TSL\model\model_3_point_full_data.h5"
 # MODEL_NAME = r"D:\WLASL\model\TMC_VIDEO_WLASL_100.h5"
-MODEL_NAME = r"D:\WLASL\model\TMC_VIDEO_WLASL_300.h5"
+# MODEL_NAME = r"D:\WLASL\model\TMC_VIDEO_WLASL_300.h5"
+MODEL_NAME = r"D:\Dataset\Sign Language\Pretrain\resnet_conv5_block3_1_conv.h5"
 
 
 def visualize():
@@ -87,15 +89,31 @@ def visualize():
 
 def visualize_all():
     # load the model
-    model = tf.keras.applications.ResNet50V2(weights='imagenet')
+    # model = tf.keras.applications.VGG16()
+    #
 
-    # model.load_weights(MODEL_NAME, by_name=True)
+    model = tf.keras.applications.ResNet50V2(weights="imagenet")
 
-    model.summary()
+    # model.summary()
+    #
+    # print(len(model.layers))
+    # print(model.layers)
+    #
+    # exit()
+
+
+    model.load_weights(MODEL_NAME, by_name=True)
+    # model = tf.keras.models.load_model(filepath=MODEL_NAME)
+
+    # model.summary()
+    #
+    # exit()
+
     # exit(0)
 
     # redefine model to output right after the first hidden layer
-    ixs = [6]
+    ixs = [149]
+    # ixs = [8]
     outputs = [model.layers[i].output for i in ixs]
     model = Model(inputs=model.inputs, outputs=outputs)
     # load the image with the required shape
@@ -109,7 +127,7 @@ def visualize_all():
     # get feature map for first hidden layer
     feature_maps = model.predict(img)
     # plot the output from each block
-    square = 8
+    square = 4
     for fmap in feature_maps:
         # plot all 64 maps in an 8x8 squares
         ix = 1
@@ -218,7 +236,7 @@ def output():
     cv2.waitKey(10000)
 
 
-IMG_NAME = 'iso2.jpg'
+IMG_NAME = 'phoenix-1.png'
 
 if __name__ == '__main__':
     # visualize()

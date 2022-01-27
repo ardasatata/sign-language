@@ -15,9 +15,9 @@ import csv
 
 import re
 
-import imageio
+# import imageio
 
-import progressbar
+# import progressbar
 import tensorflow as tf
 from keras.preprocessing import sequence
 from tensorflow import keras
@@ -45,30 +45,36 @@ from tqdm import tqdm
 
 CSL_PATH = r'F:\Dataset\Sign Language\CSL\pytorch\color'
 
-# # OUTPUT_PATH = r'F:\Dataset\Sign Language\CSL-Output'
-# OUTPUT_PATH = r'D:\Dataset\Sign Language\CSL-Output'
-# # OUTPUT_PATH = r'F:\Dataset\Sign Language\CSL-Output-ResNet'
-# KEYPOINT_PATH = r'F:\Dataset\Sign Language\CSL-Key'
-# # MODEL_SAVE_PATH = r"F:\Dataset\Sign Language\CSL Model + Keypoint"
+# OUTPUT_PATH = r'F:\Dataset\Sign Language\CSL-Output'
+# OUTPUT_PATH = r'F:\Dataset\Sign Language\CSL-Output'
+# OUTPUT_PATH = r'F:\Dataset\Sign Language\CSL-Output-ResNet'
+OUTPUT_PATH = r'D:\Dataset\Sign Language\CSL-Output_test'
+OUTPUT_PATH = r'D:\Dataset\Sign Language\CSL-Output-ResNet-conv5_block3_1_conv'
+KEYPOINT_PATH = r'D:\Dataset\Sign Language\CSL-Key'
+MODEL_SAVE_PATH = r"D:\Dataset\Sign Language\CSL Model + Keypoint - Test"
+MODEL_LOAD_PATH = r"D:\Dataset\Sign Language\CSL Model\CSL Model attn front + key 2,5%"
 # MODEL_SAVE_PATH = r"F:\Dataset\Sign Language\CSL Model + Keypoint Resnet"
-# CLASS_COUNT = 100
+CLASS_COUNT = 100
 
-SENTENCE_START = 75
+SENTENCE_START = 0
 SENTENCE_END = 100
-
 SAMPLE_PER_SENTENCE = 250
 
 PREVIEW = False
 DEBUG = False
+TESTING = False
 
-# TESTING #
-KEYPOINT_PATH = r'F:\Dataset\Sign Language\CSL-Key_test'
-OUTPUT_PATH = r'F:\Dataset\Sign Language\CSL-Output_test'
-MODEL_SAVE_PATH = r"F:\Dataset\Sign Language\CSL Model + Keypoint - Test"
-CLASS_COUNT = 2
-TESTING = True
-DEBUG = True
+LOAD_WEIGHT = True
 
+# # TESTING #
+# KEYPOINT_PATH = r'F:\Dataset\Sign Language\CSL-Key_test'
+# OUTPUT_PATH = r'F:\Dataset\Sign Language\CSL-Output_test'
+# MODEL_SAVE_PATH = r"F:\Dataset\Sign Language\CSL Model + Keypoint - Test"
+# CLASS_COUNT = 2
+# TESTING = True
+# # DEBUG = True
+
+# Keypoint Node
 selected_joints = {
     '59': np.concatenate((np.arange(0, 17), np.arange(91, 133)), axis=0),  # 59
     '31': np.concatenate((np.arange(0, 11), [91, 95, 96, 99, 100, 103, 104, 107, 108, 111],
@@ -83,7 +89,7 @@ selected_joints = {
 
 selected = selected_joints['27']
 
-
+# Generate all data
 def load_data():
     folders = [f.path for f in os.scandir(CSL_PATH) if f.is_dir()]
 
@@ -102,7 +108,7 @@ def load_data():
 CROP_X = 200
 CROP_TOP = 200
 
-
+# Crop Video for preprocessing & extract data to npz file
 def crop_video(file, fileName, folderName):
     if DEBUG:
         print(file)
@@ -184,7 +190,7 @@ def crop_video(file, fileName, folderName):
 
     # print('save npz')
 
-
+# VGG Model Construct
 def VGG_2(i_vgg):
     #    input_data = Input(name='input', shape=(None,224, 224, 3), dtype = "float16")
     # Izda.add(TimeDistributed(
@@ -227,7 +233,7 @@ def VGG_2(i_vgg):
     return model
 
 
-# Residual block
+# Residual block for Temporal module
 def ResBlock(x, filters, kernel_size, dilation_rate):
     r = Conv1D(filters, kernel_size, padding='same', dilation_rate=dilation_rate, activation='elu')(
         x)  # first convolution
@@ -240,18 +246,21 @@ def ResBlock(x, filters, kernel_size, dilation_rate):
     o = Activation('elu')(o)  # Activation function
     return o
 
-
+# TCN Layer for Temporal Module
+# consist of 4 ResBlock
 def TCN_layer(input_layer, kernel):
+    # out = tf.keras.layers.MultiHeadAttention(num_heads=4, key_dim=4)(x, x)
     #    inputs=Input(shape=(28,28))
     # print(input_layer)
     x = ResBlock(input_layer, filters=64, kernel_size=kernel, dilation_rate=1)
     x = ResBlock(x, filters=64, kernel_size=kernel, dilation_rate=2)
     x = ResBlock(x, filters=64, kernel_size=kernel, dilation_rate=4)
     x = ResBlock(x, filters=64, kernel_size=kernel, dilation_rate=8)
-    #    x=Flatten()(x)
+    # x = Flatten()(x)
+
     return x
 
-
+# Train Full Model
 def train_ctc(shuffle=True):
     x_data, y_data, x_len, y_len, x_data_val, y_data_val, x_len_val, y_len_val, x_data_keypoint, x_data_keypoint_validate, max_len, num_classes, skipped_max_len = generate_data(
         class_count=CLASS_COUNT)
@@ -262,7 +271,7 @@ def train_ctc(shuffle=True):
     #     x_data, y_data = zip(*c)
 
     # Input from intermediate layer
-    i_vgg = tf.keras.Input(name="input_1", shape=(skipped_max_len, 56, 56, 256))
+    i_vgg = tf.keras.Input(name="input_1", shape=(skipped_max_len, 7, 7, 512))
 
     # Input Keypoint
     i_keypoint = tf.keras.Input(name="input_1_keypoint", shape=(skipped_max_len, 1, 27, 3))
@@ -311,6 +320,8 @@ def train_ctc(shuffle=True):
     o_tcn_block2 = Dense(512)(o_tcn_block2)
     block2 = MaxPooling1D(pool_size=5, strides=2)(o_tcn_block2)
 
+    block2_attn = tf.keras.layers.MultiHeadAttention(num_heads=4, key_dim=4, name="block2_attn")(block2, block2)
+
     i_tcn2_key = block1_key
     o_tcn2_key = TCN_layer(i_tcn2_key, 5)
     # flatten2 = Flatten()(o_tcn2) # using flatten to sync the network size
@@ -320,7 +331,11 @@ def train_ctc(shuffle=True):
     o_tcn_key_block2 = Dense(256)(o_tcn_key_block2)
     block2_key = MaxPooling1D(pool_size=5, strides=2)(o_tcn_key_block2)
 
+    # block2_key_attn = tf.keras.layers.MultiHeadAttention(num_heads=4, key_dim=4, name="block2_key_attn")(block2_key, block2_key)
+
     # Concat VGG + Keypoint
+    # concat = concatenate([block2_attn, block2_key_attn], axis=2)
+
     concat = concatenate([block2, block2_key], axis=2)
 
     '''
@@ -346,6 +361,10 @@ def train_ctc(shuffle=True):
 
     network.compile(optimizer=Adam(lr=0.00001))
 
+    if LOAD_WEIGHT:
+        network.load_weights(by_name=True, file_weights=f'{MODEL_LOAD_PATH}/model_weights.hdf5')
+
+    network.summary()
     network.summary()
 
     metrics_names = ['val']
@@ -353,8 +372,8 @@ def train_ctc(shuffle=True):
     print(np.asarray(x_data).shape)
     print(np.asarray(y_data).shape)
 
-    batch_size = 4
-    epochs = 20
+    batch_size = 2
+    epochs = 60
 
     loss_ = 999999999
 
@@ -558,8 +577,7 @@ def train_ctc(shuffle=True):
             # x_len_list = np.array(x_len_list).reshape((1, np.array(x_len_list).shape[0]))
 
             predict = network.predict_on_batch(
-                x=[np.concatenate((np.array(x_list), np.array(x_list)), axis=0),
-                   np.concatenate((np.array(x_key_list), np.array(x_key_list)), axis=0),
+                x=[np.concatenate((np.array(x_list), np.array(x_list)), axis=0), np.concatenate((np.array(x_key_list), np.array(x_key_list)), axis=0),
                    np.concatenate((np.array(x_len_list), np.array(x_len_list)), axis=0)])
             y_new = np.concatenate((np.array(y_list), np.array(y_list)), axis=0)
 
@@ -641,7 +659,7 @@ def train_ctc(shuffle=True):
     print('######### xoxo #########')
     print('train done')
 
-
+# Data path generation & label generator
 def generate_data(class_count=10):
     sentences = {0: ['他的', '同学', '是', '警察'], 1: ['他', '妈妈', '的', '同学', '是', '公务', '员'], 2: ['我的', '爸爸', '是', '商人'],
                  3: ['他', '哥哥', '的', '目标', '是', '解放', '军'], 4: ['他', '姐姐', '的', '目标', '是', '模特'],
@@ -692,10 +710,10 @@ def generate_data(class_count=10):
         paths = os.listdir('{}/{}/'.format(path, str(c).zfill(6)))
         paths = list(map(lambda x: '{}/{}/{}'.format(path, str(c).zfill(6), x), paths))
         keypoint_paths = list(
-            map(lambda x: '{}/{}/{}'.format(keypoint_path, str(c).zfill(6), x[43:-4] + '.avi.npy'), paths))
+            map(lambda x: '{}/{}/{}'.format(keypoint_path, str(c).zfill(6), x[70:-4] + '.avi.npy'), paths))
         if TESTING:
             keypoint_paths = list(
-                map(lambda x: '{}/{}/{}'.format(keypoint_path, str(c).zfill(6), x[48:-4] + '.avi.npy'), paths))
+                map(lambda x: '{}/{}/{}'.format(keypoint_path, str(c).zfill(6), x[68:-4] + '.avi.npy'), paths))
             # keypoint_paths = list(map(lambda x: '{}/{}/{}'.format(keypoint_path, str(c).zfill(6), x[50:-4] + '.avi.npy'), paths))
         if DEBUG:
             print(paths)
@@ -721,7 +739,7 @@ def generate_data(class_count=10):
         path = os.path.normpath(vid)
         split = path.split(os.sep)
 
-        cap = cv2.VideoCapture(r'F:\Dataset\Sign Language\CSL\pytorch\color/' + split[4] + '/' + split[5][:-3] + 'avi')
+        cap = cv2.VideoCapture(r'D:\Dataset\Sign Language\CSL\pytorch\color/' + split[4] + '/' + split[5][:-3] + 'avi')
         # if TESTING:
         # cap = cv2.VideoCapture(r'F:\Dataset\Sign Language\CSL\pytorch\color/' + vid[-30:-3] + 'avi')
         # print(r'F:\Dataset\Sign Language\CSL\pytorch\color/' + vid[-30:-3] + 'avi')
@@ -732,7 +750,7 @@ def generate_data(class_count=10):
             max_vid_len = length
         if DEBUG:
             print(length)
-            print(r'F:\Dataset\Sign Language\CSL\pytorch\color/' + split[4] + '/' + split[5][:-3] + 'avi')
+            print(r'D:\Dataset\Sign Language\CSL\pytorch\color/' + split[4] + '/' + split[5][:-3] + 'avi')
     print('Calculate Max frame length done.')
 
     print(input_len)
@@ -818,7 +836,7 @@ def generate_data(class_count=10):
     keypoint_x_train, keypoint_x_validation \
         = train_test_split(x_df, decoder_input_data, decoder_target_data, sentences_y, label_len, input_len,
                            keypoint_col,
-                           test_size=0.2)
+                           test_size=0.2, random_state=1)
     print('Decoder Train')
     print(sentences_x_train)
     print(decoder_input_train)

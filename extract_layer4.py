@@ -11,7 +11,8 @@ from tensorflow.keras.models import Model
 from keras_preprocessing.image import load_img, img_to_array
 
 gpus = tf.config.experimental.list_physical_devices('GPU')
-tf.config.experimental.set_memory_growth(gpus[0], True)
+# print(gpus)
+# tf.config.experimental.set_memory_growth(gpus[0], True)
 
 from PIL import Image
 from numpy import savez_compressed
@@ -23,6 +24,7 @@ import cv2
 MODEL_NAME = r"C:\Users\minelab\dev\TSL\model\model_3_point_full_data.h5"
 # MODEL_NAME = r"D:\WLASL\model\TMC_VIDEO_WLASL_2000_10.830657319324773.h5"
 # MODEL_NAME = r"D:\WLASL\model\TMC_VIDEO_WLASL_300.h5"
+MODEL_NAME = r"F:\Dataset\Sign Language\Pretrain\resnet_conv5_block3_1_conv.h5"
 
 CLASS_NAME = r'\000009'
 
@@ -74,10 +76,11 @@ def get_value(DIR):
             tf.keras.backend.clear_session()
             gc.collect()
             print(output.shape)
+            print(file[46:-4])
 
             savez_compressed(DEST_DIR + file[46:-4] + '.npz', output)
 
-            # exit(0)
+            exit(0)
 
             cap.release()
 
@@ -92,17 +95,13 @@ def get_value(DIR):
 # block3_conv1
 # conv2_block3_preact_relu
 
-def get_output_layer(src=LOAD_IMG, layer_name='block3_conv1'):
-    # model = tf.keras.models.load_model(MODEL_NAME)
+def get_output_layer(src=LOAD_IMG, layer_name='conv5_block3_1_conv'):
+    model = tf.keras.applications.ResNet50V2(weights=r'D:\Dataset\Sign Language\ResNet\resnet50v2_weights_tf_dim_ordering_tf_kernels.h5')
 
-    # model = tf.keras.applications.ResNet50V2(weights='imagenet')
-    model = tf.keras.applications.VGG16(weights="imagenet")
+    # model = tf.keras.applications.VGG16(weights="imagenet")
 
-    model.load_weights(filepath=MODEL_NAME, by_name=True)
+    # model.load_weights(filepath=MODEL_NAME, by_name=True)
 
-    # model.summary()
-    #
-    # exit()
 
     # img = load_img(img_path, target_size=(224, 224))
 

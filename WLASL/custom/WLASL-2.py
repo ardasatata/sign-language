@@ -5,30 +5,6 @@ import random
 import zipfile
 
 import cv2
-import numpy as np
-from keras.optimizer_v2.adam import Adam
-from matplotlib.backends.backend_template import FigureCanvas
-from numpy import savez_compressed, savez
-import tensorflow as tf
-# import tensorflow.keras as keras
-import progressbar
-from tensorflow.python.keras.backend import placeholder
-from tensorflow.python.keras.models import load_model
-
-from extract_layer4 import get_output_layer
-import gc
-from tensorflow.python.keras.layers import Conv1D, Add, Activation, Lambda, Dense, TimeDistributed, Conv2D, \
-    MaxPooling2D, GlobalAveragePooling2D, Flatten, LSTM, Dropout, MaxPooling1D, Bidirectional, MaxPool2D, UpSampling2D
-from tensorflow.keras import Model
-from tensorflow.keras.utils import Progbar
-
-from train_custom import ResBlock
-
-from sklearn import preprocessing
-
-import pandas as pd
-
-from mpl_toolkits import mplot3d
 
 # %matplotlib inline
 import numpy as np

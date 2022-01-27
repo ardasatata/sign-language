@@ -15,7 +15,7 @@ from tensorflow.python.keras.layers import Conv1D, Add, Activation, Lambda, Dens
     MaxPooling2D, GlobalAveragePooling2D
 
 gpus = tf.config.experimental.list_physical_devices('GPU')
-tf.config.experimental.set_memory_growth(gpus[0], True)
+# tf.config.experimental.set_memory_growth(gpus[0], True)
 
 from PIL import Image
 from numpy import savez_compressed
